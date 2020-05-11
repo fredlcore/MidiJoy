@@ -1,0 +1,241 @@
+mads 1.9.3
+     1 FFFF> 02E0-02E1> 00 20				run start
+     2 							
+     3 = 02FC						CH = $2fc
+     4 = D010						TRIG0 = $d010
+     5 = D200						AUDF1 = $d200
+     6 = D201						AUDC1 = $d201
+     7 = D203						AUDC2 = $d203
+     8 = D205						AUDC3 = $d205
+     9 = D207						AUDC4 = $d207
+    10
+    11 = D208						AUDCTL = $d208
+    12 = D20F						SKCTL = $d20f
+    13
+    14 = D300						PORTA = $d300
+    15
+    16 02E2						org $80
+    17
+    18 0080-008B> 00		MIDI		.byte 0
+    19 0081 00			VOICE		.byte 0
+    20 0082 00			PARAM		.byte 0
+    21 0083 00			NOTE		.byte 0
+    22 0084 00			TEMP		.byte 0
+    23 0085 00			TRIGGER		.byte 0
+    24 0086 00			ACTL		.byte 0
+    25 0087 A0			AC1			.byte $a0
+    26 0088 A0			AC2			.byte $a0
+    27 0089 A0			AC3			.byte $a0
+    28 008A A0			AC4			.byte $a0
+    29 008B 00			D12FLAG		.byte 0
+    30 							
+    31 008C						org $2000
+    32 2000			start
+    33 2000-2289> A0 00					ldy #0
+    34 2002 A2 00					ldx #0
+    35 2004 BD 65 22		nextchar	lda INTRO,x
+    36 2007 91 58					sta (88),y
+    37 2009 C8						iny
+    38 200A E8						inx
+    39 200B E0 9A					cpx #END-INTRO
+    40 200D D0 F5					bne nextchar
+    41 							
+    42 200F A9 00					lda #0
+    43 2011 8D 08 D2					sta AUDCTL
+    44 2014 A9 03					lda #3
+    45 2016 8D 0F D2					sta SKCTL
+    46
+    47 2019			MainLoop
+    48 2019 A2 07					ldx #7
+    49 201B BD 31 21		nb1			lda AUDCTLKeys,x		; read AUDCTL-Keys (1-8)
+    50 201E CD FC 02					cmp CH
+    51 2021 F0 05					beq sb
+    52 2023 CA						dex
+    53 2024 10 F5					bpl nb1
+    54 2026 30 07					bmi audckey
+    55 2028 BD 39 21		sb			lda AUDCTLVals,x
+    56 202B 45 86					eor ACTL
+    57 202D 85 86					sta ACTL
+    58
+    59 202F A2 0B		audckey		ldx #11					; read AUDC1-4 keys (Q-Z, A-H)
+    60 2031 BD 41 21		nb2			lda ACKeys,x
+    61 2034 CD FC 02					cmp CH
+    62 2037 F0 05					beq sb2
+    63 2039 CA						dex
+    64 203A 10 F5					bpl nb2
+    65 203C 30 0C					bmi spacekey
+    66 203E BD 4D 21		sb2			lda ACVals,x
+    67 2041 BC 59 21					ldy ACIndex,x
+    68 2044 59 87 00					eor AC1,y
+    69 2047 99 87 00					sta AC1,y
+    70
+    71 204A AD FC 02		spacekey	lda CH
+    72 204D C9 21					cmp #$21
+    73 204F D0 06					bne nokey
+    74 2051 A5 8B					lda D12FLAG
+    75 2053 49 01					eor #1
+    76 2055 85 8B					sta D12FLAG
+    77
+    78 2057 A9 FF		nokey		lda #255
+    79 2059 8D FC 02					sta CH
+    80
+    81 205C A5 86					lda ACTL
+    82 205E 8D 08 D2					sta AUDCTL
+    83 2061 85 84					sta TEMP
+    84
+    85 2063 A0 87					ldy #135			; display AUDCTL bits on screen
+    86 2065 A2 08					ldx #8
+    87 2067 20 13 21					jsr showbits
+    88
+    89 206A A0 03					ldy #3				; display AUDC1-4 bits 5-7 on screen
+    90 206C B9 87 00		nextaudc	lda AC1,y
+    91 206F 18						clc
+    92 2070 6A						ror
+    93 2071 6A						ror
+    94 2072 6A						ror
+    95 2073 6A						ror
+    96 2074 6A						ror
+    97 2075 85 84					sta TEMP
+    98 2077 98						tya
+    99 2078 48						pha
+   100 2079 B9 71 21					lda AUDCOffset,y
+   101 207C A8						tay
+   102 207D A2 03					ldx #3
+   103 207F 20 13 21					jsr showbits
+   104 2082 68						pla
+   105 2083 A8						tay
+   106 2084 88						dey
+   107 2085 C0 00					cpy #0
+   108 2087 10 E3					bpl nextaudc
+   109
+   110 2089 AD 10 D0					lda TRIG0
+   111 208C A9 00					lda #0
+   112 208E 85 85					sta TRIGGER
+   113 2090 AD 00 D3					lda PORTA			; read joysticks 1+2
+   114 				/*
+   115 				;			lda #%00001000
+   116 							lda MIDI
+   117 							adc 20
+   118 							eor #%10000000
+   119 							ora #%01110101
+   120 				*/
+   120
+   121 2093 85 80					sta MIDI			; and store in variable
+   122 2095 85 84					sta TEMP
+   123
+   124 2097 A5 80					lda MIDI
+   125 2099 18						clc
+   126 209A 29 60					and #%01100000		; isolate voice channel from data (bits 6+7)
+   127 209C 6A						ror
+   128 209D 6A						ror
+   129 209E 6A						ror
+   130 209F 6A						ror
+   131 20A0 6A						ror
+   132 20A1 85 81					sta VOICE
+   133 20A3 A4 81					ldy VOICE
+   134 20A5 B9 6D 21					lda POKEYOffset,y
+   135 20A8 A8						tay					; Y carries AUDF/C-Offset						
+   136
+   137 20A9 A5 80					lda MIDI
+   138 20AB 29 1F					and #%00011111		; isolate sound parameter (pitch or volume) from data 
+   139 20AD 85 82					sta PARAM
+   140 20AF A5 80					lda MIDI
+   141 20B1 29 80					and #%10000000		; isolate command (bit 7)
+   142 20B3 C9 80					cmp #%10000000		; if set then volume, otherwise pitch
+   143 20B5 F0 4B					beq setvolume
+   144
+   145 20B7 A5 85					lda TRIGGER			; fire button as 6th bit for pitch
+   146 20B9 F0 08					beq cont
+   147 20BB A5 82					lda PARAM
+   148 20BD 09 20					ora #%00100000
+   149 20BF 85 82					sta PARAM
+   150 20C1 85 84					sta TEMP
+   151
+   152 20C3			cont		
+   153 20C3 A6 81					ldx VOICE			; Voice to X
+   154 20C5 B5 87					lda AC1,x			; Read distortion of voice X and use appropriate scale
+   155 20C7 C9 20					cmp #$20
+   156 20C9 F0 0D					beq D2
+   157 20CB C9 C0					cmp #$c0
+   158 20CD F0 12					beq D12
+   159 20CF A6 82		D10			ldx PARAM			; Midi-Note to X
+   160 20D1 BD 75 21					lda NotesD10,x
+   161 20D4 85 83					sta NOTE
+   162 20D6 D0 19					bne setfreq
+   163 20D8 A6 82		D2			ldx PARAM			; Midi-Note to X
+   164 20DA BD D5 21					lda NotesD2,x
+   165 20DD 85 83					sta NOTE
+   166 20DF D0 10					bne setfreq
+   167 20E1 A6 82		D12			ldx PARAM			; Midi-Note to X
+   168 20E3 A5 8B					lda D12FLAG
+   169 20E5 D0 05					bne D12b
+   170 20E7 BD 05 22					lda NotesD12,x
+   171 20EA D0 03					bne setnote
+   172 20EC BD 35 22		D12b		lda NotesD12b,x
+   173 20EF 85 83		setnote		sta NOTE
+   174
+   175 20F1 A5 83		setfreq		lda NOTE
+   176 20F3 99 00 D2					sta AUDF1,y			; store the data in the audio frequency register of channel 0 + offset
+   177 				;			sta 708,y			; some graphic feedback
+   178 							
+   179 20F6 A0 5F					ldy #95				; display note bits on screen
+   180 20F8 A2 08					ldx #8
+   181 20FA A5 84					lda TEMP
+   182 20FC 20 13 21					jsr showbits
+   183 							
+   184 20FF 4C 19 20					jmp MainLoop
+   185
+   186 2102 18			setvolume	clc
+   187 2103 98						tya					; AUDC1,2,3,4 distance = 2 each
+   188 2104 6A						ror					; AC1,2,3,4 distance = 1 each
+   189 2105 AA						tax					; i.e. Y=6, X=3
+   190 2106 A5 82					lda PARAM
+   191 2108 29 0F					and #%00001111
+   192 210A 18						clc
+   193 210B 75 87					adc AC1,x
+   194 210D 99 01 D2					sta AUDC1,y
+   195
+   196 2110 4C 19 20					jmp  MainLoop		; jump back to main loop and wait for next lot of data
+   197
+   198 2113 A5 84		showbits	lda TEMP
+   199 2115 29 01					and #1
+   200 2117 C9 01					cmp #1
+   201 2119 D0 05					bne zero
+   202 211B BD 64 21					lda BitTable-1,x
+   203 211E 10 02					bpl output
+   204 2120 A9 0D		zero		lda #"-"
+   205 2122 91 58		output		sta (88),y
+   206 2124 A5 84					lda TEMP
+   207 2126 18						clc
+   208 2127 6A						ror
+   209 2128 85 84					sta TEMP
+   210 212A 88						dey
+   211 212B CA						dex
+   212 212C E0 00					cpx #0
+   213 212E D0 E3					bne showbits
+   214 2130 60						rts
+   215
+   216 2131 35 33 1B 1D 18 1A + AUDCTLKeys	.byte $35, $33, $1b, $1d, $18, $1a, $1e, $1f
+   217 2139 01 02 04 08 10 20 + AUDCTLVals	.byte 1, 2, 4, 8, 16, 32, 64, 128
+   218 2141 2A 2E 2F 2B 2D 28 + ACKeys		.byte $2a, $2e, $2f, $2b, $2d, $28, $3a, $3e, $3f, $39, $3d, $38
+   219 214D 20 40 80 20 40 80 + ACVals		.byte 32, 64, 128, 32, 64, 128, 32, 64, 128, 32, 64, 128
+   220 2159 00 00 00 01 01 01 + ACIndex		.byte 0, 0, 0, 1, 1, 1, 2, 2, 2, 3, 3, 3
+   221 2165 17 16 15 14 13 12 + BitTable	.byte "7", "6", "5", "4", "3", "2", "1", "0"
+   222 216D 00 02 04 06		POKEYOffset	.byte 0, 2, 4, 6
+   223 2171 6A 75 92 9D		AUDCOffset	.byte 106, 117, 146, 157
+   224 2175 F3 E6 D9 CC C1 B6 + NotesD10	.byte 243, 230, 217, 204, 193, 182, 172, 162, 153, 144, 136, 128, 121, 114, 108, 102, 96, 91, 85, 81, 76, 72, 68, 64, 60, 57, 53, 50, 47, 45, 42, 40, 37, 35, 33, 31, 30, 28, 26, 25, 23, 22, 21, 19, 18, 17, 16, 15, 243, 230, 217, 204, 193, 182, 172, 162, 153, 144, 136, 128, 121, 114, 108, 102, 96, 91, 85, 81, 76, 72, 68, 64, 60, 57, 53, 50, 47, 45, 42, 40, 37, 35, 33, 31, 30, 28, 26, 25, 23, 22, 21, 19, 18, 17, 16, 15
+   225 21D5 1F 1D 1B 1A 18 17 + NotesD2		.byte 31, 29, 27, 26, 24, 23, 21, 20, 19, 18, 17, 16, 15, 14, 13, 12, 11, 11, 10, 9, 9, 8, 8, 7, 7, 6, 6, 5, 5, 5, 4, 4, 4, 3, 3, 3, 3, 2, 2, 2, 2, 2, 1, 1, 1, 1, 1, 1
+   226 2205 82 7B 75 6C 67 61 + NotesD12	.byte 130, 123, 117, 108, 103, 97, 93, 85, 82, 76, 72, 67, 63, 61, 57, 55, 51, 48, 45, 43, 40, 37, 36, 33, 31, 30, 28, 27, 25, 71, 22, 21, 62, 18, 53, 16, 15, 15, 15, 41, 12, 35, 35, 10, 10, 10, 10, 10
+   227 2235 F5 F5 F5 F5 F5 F5 + NotesD12b	.byte 245, 245, 245, 245, 245, 245, 245, 245, 245, 233, 218, 206, 197, 182, 173, 167, 155, 146, 137, 131, 122, 116, 184, 101, 98, 92, 86, 80, 77, 71, 68, 65, 62, 56, 53, 50, 47, 41, 41, 41, 38, 35, 32, 32, 26, 26, 26, 26
+   228
+   229 2265 00 00 00 2D 69 64 + INTRO		.byte "   MidiJoy (P) 2014 by Frederik Holst"
+   230 228A						org INTRO+80
+   231 22B5-22B9> 2E 6F 74 65 + 			.byte "Note:"
+   232 22BA						org INTRO+97
+   233 22C6-22D6> 21 35 24 23 + 			.byte "AUDC1:     AUDC2:"
+   234 22D7						org INTRO+120
+   235 22DD-22E3> 21 35 24 23 + 			.byte "AUDCTL:"
+   236 22E4						org INTRO+137
+   237 22EE-22FE> 21 35 24 23 + 			.byte "AUDC3:     AUDC4:"
+   238 22FF			END	
+   239

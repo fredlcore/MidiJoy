@@ -1,0 +1,155 @@
+mads 1.9.3
+     1 FFFF> 02E0-02E1> 19 06				run start
+     2
+     3 = 004D						ATTRACT = $4d
+     4 = 02FC						CH = $2fc
+     5 = D010						TRIG0 = $d010
+     6 = D011						TRIG1 = $d011
+     7 = D200						AUDF1 = $d200
+     8 = D201						AUDC1 = $d201
+     9 = D203						AUDC2 = $d203
+    10 = D205						AUDC3 = $d205
+    11 = D207						AUDC4 = $d207
+    12
+    13 = D208						AUDCTL = $d208
+    14 = D20F						SKCTL = $d20f
+    15
+    16 02E2						org $CB
+    17
+    18 00CB-00D1> 00 99		NOTEPTR		.word $9900			; change this to end of notes
+    19 00CD 00 50		PLAYPTR		.word $5000			; change this to beginning of notes
+    20 00CF 00 00		PLAYTIMER	.word 0
+    21 00D1 00			TIMER		.byte 0
+    22
+    23 00D2						org $0600
+    24
+    25 0600-06F5> 68					pla					; BASIC routine to pull beginning and length of notes
+    26 0601 C9 02					cmp #2				; usage: X=USR(1536,PLAYPTR,NOTEPTR) (see above)
+    27 0603 F0 08					beq pulldata
+    28 0605 A8						tay					; not exactly 2 arguments, so exit, but do leave with a proper stack...
+    29 0606 88						dey
+    30 0607 68			clearstack	pla
+    31 0608 68						pla
+    32 0609 88						dey
+    33 060A 10 FB					bpl clearstack
+    34 060C 60						rts
+    35
+    36 060D 68			pulldata	pla
+    37 060E 85 CE					sta PLAYPTR+1
+    38 0610 68						pla
+    39 0611 85 CD					sta PLAYPTR
+    40 0613 68						pla 
+    41 0614 85 CC					sta NOTEPTR+1
+    42 0616 68						pla 
+    43 0617 85 CB					sta NOTEPTR
+    44
+    45 0619			start
+    46 0619 A5 CD					lda PLAYPTR
+    47 061B 8D F0 06					sta TEMPPTR
+    48 061E A5 CE					lda PLAYPTR+1
+    49 0620 8D F1 06					sta TEMPPTR+1
+    50 							
+    51 0623 A9 03					lda #3
+    52 0625 8D 0F D2					sta SKCTL
+    53 0628 A9 00					lda #0
+    54 062A 8D 08 D2					sta AUDCTL
+    55 062D 85 14					sta 20
+    56 							
+    57 062F A0 03					ldy #3
+    58 0631 99 E6 06		cleartimer	sta NOTETIMER,y
+    59 0634 88						dey
+    60 0635 10 FA					bpl cleartimer
+    61
+    62 0637			playloop	
+    63 0637 38						sec
+    64 0638 A5 14					lda 20
+    65 063A E5 D1					sbc TIMER
+    66 063C F0 F9					beq playloop
+    67 063E A5 14					lda 20
+    68 0640 85 D1					sta TIMER
+    69 0642 A9 00					lda #0
+    70 0644 85 4D					sta ATTRACT
+    71
+    72 0646 EE E6 06					inc NOTETIMER			; increase timer
+    73 0649 D0 03					bne donetimer0
+    74 064B EE E7 06					inc NOTETIMER+1
+    75 064E EE E8 06		donetimer0	inc NOTETIMER+2
+    76 0651 D0 03					bne donetimer1
+    77 0653 EE E9 06					inc NOTETIMER+3
+    78 0656 EE EA 06		donetimer1	inc NOTETIMER+4
+    79 0659 D0 03					bne donetimer2
+    80 065B EE EB 06					inc NOTETIMER+5
+    81 065E EE EC 06		donetimer2	inc NOTETIMER+6
+    82 0661 D0 03					bne exitcond
+    83 0663 EE ED 06					inc NOTETIMER+7
+    84
+    85 0666 AD FC 02		exitcond	lda CH					; define an exit condition - here: SPACE key
+    86 0669 C9 21					cmp #$21
+    87 066B F0 66					beq exitplay
+    88 066D A5 CE					lda PLAYPTR+1			; check end of music
+    89 066F C5 CC					cmp NOTEPTR+1
+    90 0671 90 06					bcc doplay
+    91 0673 A5 CD					lda PLAYPTR
+    92 0675 C5 CB					cmp NOTEPTR
+    93 0677 B0 5A					bcs exitplay
+    94
+    95 0679 A0 00		doplay		ldy #0
+    96 067B B1 CD					lda (PLAYPTR),y
+    97 067D AA						tax						; voice to X
+    98 067E C8						iny
+    99 067F B1 CD					lda (PLAYPTR),y
+   100 0681 8D EE 06					sta PLAYAUDC			; save AUDC-value
+   101 0684 C8						iny
+   102 0685 B1 CD					lda (PLAYPTR),y
+   103 0687 8D EF 06					sta PLAYNOTE			; save note
+   104 068A C8						iny
+   105 068B B1 CD					lda (PLAYPTR),y
+   106 068D 85 CF					sta PLAYTIMER			; save timer low-byte
+   107 068F C8						iny
+   108 0690 B1 CD					lda (PLAYPTR),y
+   109 0692 85 D0					sta PLAYTIMER+1			; save timer high-byte
+   110
+   111 0694 BD F2 06					lda POKEYOffset,x
+   112 0697 A8						tay						; Offset to Y
+   113 0698 B9 E7 06		waittimer	lda NOTETIMER+1,y
+   114 069B C5 D0					cmp PLAYTIMER+1			; Playtimer >= Notetimer (high byte)?
+   115 069D 90 31					bcc jmploop
+   116 069F B9 E6 06					lda NOTETIMER,y
+   117 06A2 C5 CF					cmp PLAYTIMER			; Playtimer >= Notetimer (low byte)?
+   118 06A4 90 2A					bcc jmploop
+   119 06A6 A9 00					lda #0					; First reset counters...
+   120 06A8 85 CF					sta PLAYTIMER
+   121 06AA 85 D0					sta PLAYTIMER+1
+   122 06AC 99 E6 06					sta NOTETIMER,y
+   123 06AF 99 E7 06					sta NOTETIMER+1,y
+   124 06B2 AD EE 06					lda PLAYAUDC			; then play note...
+   125 06B5 99 01 D2					sta AUDC1,y
+   126 06B8 AD EF 06					lda PLAYNOTE
+   127 06BB 99 00 D2					sta AUDF1,y
+   128 06BE 18						clc
+   129 06BF A5 CD					lda PLAYPTR
+   130 06C1 69 05					adc #$05				; increase pointer
+   131 06C3 85 CD					sta PLAYPTR
+   132 06C5 90 9F					bcc exitcond
+   133 06C7 A5 CE					lda PLAYPTR+1
+   134 06C9 69 00					adc #0
+   135 06CB 85 CE					sta PLAYPTR+1
+   136 06CD 4C 66 06					jmp exitcond
+   137 06D0 4C 37 06		jmploop		jmp playloop
+   138 							
+   139 06D3 A0 03		exitplay	ldy #3
+   140 06D5 A9 00					lda #0
+   141 06D7 99 E6 06		clearplayer	sta NOTETIMER,y
+   142 06DA 99 01 D2					sta AUDC1,y
+   143 06DD 99 05 D2					sta AUDC1+4,y
+   144 06E0 88						dey
+   145 06E1 10 F4					bpl clearplayer
+   146 06E3 60						rts
+   147
+   148 06E4 00 00		NOTE		.byte 0, 0
+   149 06E6 00 00 00 00 00 00 + NOTETIMER	.word 0, 0, 0, 0
+   150 06EE 00			PLAYAUDC	.byte 0
+   151 06EF 00			PLAYNOTE	.byte 0
+   152 06F0 00 00		TEMPPTR		.word 0
+   153
+   154 06F2 00 02 04 06		POKEYOffset	.byte 0, 2, 4, 6

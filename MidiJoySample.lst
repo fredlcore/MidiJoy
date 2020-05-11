@@ -1,0 +1,57 @@
+mads 1.9.3
+     1 				;			MidiJoy sample code (c) 2014 by Frederik Holst
+     2
+     3 FFFF> 02E0-02E1> 00 40				run start
+     4
+     5 = D010						TRIG0 = $d010
+     6 = D011						TRIG1 = $d011
+     7 = D200						AUDF1 = $d200
+     8 = D201						AUDC1 = $d201
+     9 = D208						AUDCTL = $d208
+    10 = D20F						SKCTL = $d20f
+    11 = D300						PORTA = $d300
+    12 							
+    13 02E2						org $4000
+    14
+    15 4000			start
+    16 4000-40B3> A9 00					lda #0				; initialize POKEY soundchip
+    17 4002 8D 08 D2					sta AUDCTL
+    18 4005 A9 03					lda #3
+    19 4007 8D 0F D2					sta SKCTL
+    20
+    21 400A A2 FF		loop		ldx #255			; The dT delay in the Teensy code is set to accomodate more code on the 
+    22 400C CA			wait		dex					; computer side. Remove or replace this loop with your own sound processing code			cpx #0				; or decrease dT delay in Teensy code it used for playback only
+    23 400D D0 FD					bne wait			; or decrease dT delay in Teensy code it used for playback only
+    24
+    25 400F AD 10 D0					lda TRIG0			; Trigger 0 contains Bit 1 of voice channel
+    26 4012 0A						asl					; move left to Bit 1 position
+    27 4013 18						clc
+    28 4014 6D 11 D0					adc TRIG1			; Trigger 1 contains Bit 0 of voice channel
+    29 4017 0A						asl					; POKEY sound registers are two bytes per voice, so multiply voice by two
+    30 4018 A8						tay					; save resulting voice index in Y register
+    31
+    32 4019 AD 00 D3					lda PORTA			; read joysticks 1+2
+    33 401C C9 80					cmp #%10000000		; if bit 7 is set then volume data follows, otherwise pitch
+    34 401E 90 0B					bcc setpitch
+    35
+    36 4020 29 0F		setvolume	and #%00001111		; mask lower four bits of Midi data which contain volume information
+    37 4022 18						clc
+    38 4023 69 A0					adc #$a0			; add standard distortion (stored in the same POKEY register)
+    39 4025 99 01 D2					sta AUDC1,y			; and set based on voice index (from Y)
+    40 4028 4C 0A 40					jmp loop
+    41 							
+    42 402B AA			setpitch	tax					; transfer Midi value to X
+    43 402C BD 35 40					lda Notes,x			; load frequency from table using Midi pitch value from X as index
+    44 402F 99 00 D2					sta AUDF1,y			; and set based on voice index (from Y)
+    45 4032 4C 0A 40					jmp loop
+    46 							
+    47 				;			Note conversion table, sound values corresponding to Midi notes C0 (1st byte) to G10 (127th byte)
+    48 				;			In case pitch range of the computer does not match Midi range, repeat lowest/highest octave accordingly
+    49 4035 F3 E6 D9 CC C1 B6 + Notes		.byte $F3, $E6, $D9, $CC, $C1, $B6, $AC, $A2, $99, $90, $88, $80, $F3, $E6, $D9, $CC
+    50 4045 C1 B6 AC A2 99 90 + 			.byte $C1, $B6, $AC, $A2, $99, $90, $88, $80, $F3, $E6, $D9, $CC, $C1, $B6, $AC, $A2
+    51 4055 99 90 88 80 F3 E6 + 			.byte $99, $90, $88, $80, $F3, $E6, $D9, $CC, $C1, $B6, $AC, $A2, $99, $90, $88, $80
+    52 4065 F3 E6 D9 CC C1 B6 + 			.byte $F3, $E6, $D9, $CC, $C1, $B6, $AC, $A2, $99, $90, $88, $80, $79, $72, $6C, $66
+    53 4075 60 5B 55 51 4C 48 + 			.byte $60, $5B, $55, $51, $4C, $48, $44, $40, $3C, $39, $35, $32, $2F, $2D, $2A, $28
+    54 4085 25 23 21 1F 1E 1C + 			.byte $25, $23, $21, $1F, $1E, $1C, $1A, $19, $17, $16, $15, $13, $12, $11, $10, $0F
+    55 4095 0E 1C 1A 19 17 16 + 			.byte $0E, $1C, $1A, $19, $17, $16, $15, $13, $12, $11, $10, $0F, $0E, $1C, $1A, $19
+    56 40A5 17 16 15 13 12 11 + 			.byte $17, $16, $15, $13, $12, $11, $10, $0F, $0E, $1C, $1A, $19, $17, $16, $15

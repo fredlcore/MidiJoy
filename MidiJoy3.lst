@@ -1,0 +1,963 @@
+mads 1.9.3
+     1 				;			MidiJoy (c) 2014 by Frederik Holst
+     2
+     3 FFFF> 02E0-02E1> 00 3C				run start
+     4 							
+     5 = 000A						DOSVEC = $0a
+     6 = 004D						ATTRACT = $4d
+     7 = 022F						SDMCTL = $22f
+     8 = 0230						SDLSTL = $230
+     9 = 02FC						CH = $2fc
+    10 = D010						TRIG0 = $d010
+    11 = D011						TRIG1 = $d011
+    12 = D200						AUDF1 = $d200
+    13 = D201						AUDC1 = $d201
+    14 = D203						AUDC2 = $d203
+    15 = D205						AUDC3 = $d205
+    16 = D207						AUDC4 = $d207
+    17
+    18 = D208						AUDCTL = $d208
+    19 = D20F						SKCTL = $d20f
+    20
+    21 = D300						PORTA = $d300
+    22
+    23 = 4F00						ADSRStart = $4f00
+    24 = 4F05						ADSRTable = ADSRStart+5
+    25 				;			ADSRTable = ADSRMax+4
+    26
+    27 02E2						org $80
+    28
+    29 0080-00D9> 00		MIDI		.byte 0
+    30 0081 00			VOICE		.byte 0
+    31 0082 00			PARAM		.byte 0
+    32 0083 00 00		NOTE		.byte 0, 0
+    33 0085 00 00 00 00 00 00 + NOTETIMER	.word 0, 0, 0, 0
+    34 008D 00 50		NOTEPTR		.word $5000
+    35 008F 00 00		TEMPPTR		.word 0
+    36 0091 00 50		PLAYPTR		.word $5000
+    37 0093 00			PLAYAUDC	.byte 0
+    38 0094 00			PLAYNOTE	.byte 0
+    39 0095 00 00		PLAYTIMER	.word 0
+    40 0097 00			TEMP		.byte 0
+    41 0098 00			ACTL		.byte 0
+    42 0099 A0 A0 A0 A0		AC1			.byte $a0, $a0, $a0, $a0
+    43 009D 00			D12FLAG		.byte 0
+    44 009E 00			SXBITFLAG	.byte 0
+    45 009F 00			RECFLAG		.byte 0
+    46 00A0 00			PLAYFLAG	.byte 0
+    47 00A1 80			PORTASAVE	.byte 128
+    48 00A2 01			VOICESAVE	.byte 1
+    49 00A3 00 00 00 00		VOLSAVE		.byte 0, 0, 0, 0
+    50 00A7 00 00 00 00		VolTemp		.byte 0, 0, 0, 0
+    51 00AB 00 00 00 00		DispVol		.byte 0, 0 ,0 ,0
+    52 00AF 00 00 00 00		ADSRActive	.byte 0, 0, 0 ,0
+    53 00B3 01 01 01 01		ADSRC		.byte 1, 1, 1, 1
+    54 00B7 00			ADSRVol		.byte 0
+    55 00B8 00			ADSRDist	.byte 0
+    56 00B9 00			ADSRTemp	.byte 0
+    57 				; POKEYOffset	.byte 0, 2, 4, 6
+    58 00BA 6A 75 92 9D		AUDCOffset	.byte 106, 117, 146, 157
+    59 				;RelOffset	.byte Rel1-ADS1, Rel2-ADS2, Rel3-ADS3, Rel4-ADS4	; these can be adjusted if you need a longer release phase at the cost of shorter ADS phase
+    60 				;RelMax		.byte ADS2-ADS1, ADS3-ADS2, ADS4-ADS3, ENDADSR-ADS4
+    61 00BE 00 00 00 00		RelMax		.byte 0, 0, 0, 0
+    62 00C2 00 00		EnvSrc		.word 0
+    63 00C4 00			EnvSelect	.byte 0
+    64 00C5 00			CHTemp		.byte 0
+    65
+    66 00C6 00 00 00 01 01 01 + ACIndex		.byte 0, 0, 0, 1, 1, 1, 2, 2, 2, 3, 3, 3
+    67 00D2 17 16 15 14 13 12 + BitTable	.byte "7", "6", "5", "4", "3", "2", "1", "0"
+    68
+    69 00DA						org $3c00
+    70 3C00			start
+    71
+    72 3C00-41D5> A9 5D					lda #<DLIST		; set up display list
+    73 3C02 8D 30 02					sta SDLSTL
+    74 3C05 A9 41					lda #>DLIST
+    75 3C07 8D 31 02					sta SDLSTL+1
+    76 3C0A A9 22					lda #%00100010
+    77 3C0C 8D 2F 02					sta SDMCTL
+    78 3C0F A9 B1					lda #<INTRO
+    79 3C11 85 58					sta 88
+    80 3C13 A9 41					lda #>INTRO
+    81 3C15 85 59					sta 89
+    82
+    83 3C17 A9 00					lda #0
+    84 3C19 8D 08 D2					sta AUDCTL
+    85 				;			sta 20
+    86 3C1C A9 03					lda #3
+    87 3C1E 8D 0F D2					sta SKCTL
+    88 							
+    89 3C21 A0 98					ldy #<VBI		; set up VBI
+    90 3C23 A2 40					ldx #>VBI
+    91 3C25 A9 06					lda #6
+    92 3C27 20 5C E4					jsr $e45c
+    93
+    94 3C2A			MainLoop
+    95 3C2A AD FC 02					lda CH
+    96 3C2D 85 C5					sta CHTemp
+    97 3C2F C9 FF					cmp #255
+    98 3C31 D0 03					bne checkinput
+    99 3C33 4C 31 3D					jmp nokey
+   100
+   101 3C36 A9 FF		checkinput	lda #255
+   102 3C38 8D FC 02					sta CH
+   103
+   104 3C3B A2 07					ldx #7
+   105 3C3D BD 7D 41		nb1			lda AUDCTLKeys,x		; read AUDCTL-Keys (Q-Y)
+   106 3C40 C5 C5					cmp CHTemp
+   107 3C42 F0 05					beq sb
+   108 3C44 CA						dex
+   109 3C45 10 F6					bpl nb1
+   110 3C47 30 0B					bmi audckey
+   111 3C49 A9 FF		sb			lda #255
+   112 3C4B 85 C5					sta CHTemp
+   113 3C4D BD 85 41					lda AUDCTLVals,x
+   114 3C50 45 98					eor ACTL
+   115 3C52 85 98					sta ACTL
+   116
+   117 3C54 A2 0B		audckey		ldx #11					; read AUDC1-4 keys (A-H, Z-N)
+   118 3C56 BD 8D 41		nb2			lda ACKeys,x
+   119 3C59 C5 C5					cmp CHTemp
+   120 3C5B F0 05					beq sb2
+   121 3C5D CA						dex
+   122 3C5E 10 F6					bpl nb2
+   123 3C60 30 0F					bmi envkey
+   124 3C62 A9 FF		sb2			lda #255
+   125 3C64 85 C5					sta CHTemp
+   126 3C66 BD 99 41					lda ACVals,x
+   127 3C69 B4 C6					ldy ACIndex,x
+   128 3C6B 59 99 00					eor AC1,y
+   129 3C6E 99 99 00					sta AC1,y
+   130
+   131 3C71 A2 00		envkey		ldx #0					; read envelope keys (1-8)
+   132
+   133 3C73 BD A5 41		nb3			lda EnvKeys,x
+   134 3C76 C5 C5					cmp CHTemp
+   135 3C78 F0 07					beq sb3
+   136 3C7A E8						inx
+   137 3C7B E0 09					cpx #9
+   138 3C7D D0 F4					bne nb3
+   139 3C7F F0 37					beq spacekey
+   140 3C81 A9 FF		sb3			lda #255
+   141 3C83 85 C5					sta CHTemp
+   142 3C85 8A						txa
+   143 3C86 85 C4					sta EnvSelect
+   144 3C88 18						clc
+   145 3C89 69 34					adc #$34
+   146 3C8B 85 C3					sta EnvSrc+1
+   147 3C8D B1 C2		nextenv		lda (EnvSrc),y
+   148 3C8F 99 00 4F					sta $4f00,y
+   149 3C92 88						dey
+   150 3C93 D0 F8					bne nextenv
+   151
+   152 3C95 A0 03					ldy #3
+   153 3C97 A9 01		ClearADSR	lda #1
+   154 3C99 99 B3 00					sta ADSRC,y
+   155 3C9C A9 00					lda #0
+   156 3C9E 99 AF 00					sta ADSRActive,y
+   157 3CA1 88						dey
+   158 3CA2 10 F3					bpl ClearADSR
+   159 							
+   160 3CA4 A0 00					ldy #0
+   161 3CA6 98			nextbank	tya
+   162 3CA7 C5 C4					cmp EnvSelect
+   163 3CA9 18						clc
+   164 3CAA D0 02					bne contenv
+   165 3CAC 69 80					adc #128
+   166 3CAE 69 11		contenv		adc #"1"
+   167 3CB0 99 31 42					sta EnvBank,y
+   168 3CB3 C8						iny
+   169 3CB4 C0 08					cpy #8
+   170 3CB6 D0 EE					bne nextbank
+   171
+   172 3CB8 A5 C5		spacekey	lda CHTemp
+   173 3CBA C9 21					cmp #$21
+   174 3CBC D0 0A					bne exitdos
+   175 3CBE A9 FF					lda #255
+   176 3CC0 85 C5					sta CHTemp
+   177 3CC2 A5 9D					lda D12FLAG
+   178 3CC4 49 01					eor #1
+   179 3CC6 85 9D					sta D12FLAG
+   180
+   181 3CC8 A5 C5		exitdos		lda CHTemp
+   182 3CCA C9 01					cmp #$01
+   183 3CCC D0 07					bne pauserec
+   184 3CCE A9 FF					lda #255
+   185 3CD0 85 C5					sta CHTemp
+   186 3CD2 6C 0A 00					jmp (DOSVEC)
+   187
+   188 3CD5 A5 C5		pauserec	lda CHTemp
+   189 3CD7 C9 2C					cmp #$2c
+   190 3CD9 D0 12					bne playkey
+   191 3CDB A9 FF					lda #255
+   192 3CDD 85 C5					sta CHTemp
+   193 3CDF A5 9F					lda RECFLAG
+   194 3CE1 49 01					eor #1
+   195 3CE3 85 9F					sta RECFLAG
+   196 3CE5 0A						asl
+   197 3CE6 0A						asl
+   198 3CE7 0A						asl
+   199 3CE8 0A						asl
+   200 3CE9 0A						asl
+   201 3CEA 8D C8 02					sta 712
+   202
+   203 3CED A5 C5		playkey		lda CHTemp
+   204 3CEF C9 0A					cmp #$0a
+   205 3CF1 D0 03					bne enter
+   206 3CF3 4C 99 3E					jmp playram
+   207
+   208 3CF6 A5 C5		enter		lda CHTemp
+   209 3CF8 C9 0C					cmp #$0C
+   210 3CFA D0 35					bne nokey
+   211 3CFC A9 FF					lda #255
+   212 3CFE 85 C5					sta CHTemp
+   213 3D00 A9 00					lda #0
+   214 3D02 85 9F					sta RECFLAG
+   215 3D04 8D C8 02					sta 712
+   216 3D07 A0 07					ldy #7
+   217 3D09 99 01 D2		resetsound	sta AUDC1,y
+   218 3D0C 88						dey
+   219 3D0D 10 FA					bpl resetsound
+   220 				;			lda #0
+   221 3D0F 85 85					sta NOTETIMER
+   222 3D11 85 86					sta NOTETIMER+1
+   223 3D13 85 87					sta NOTETIMER+2
+   224 3D15 85 88					sta NOTETIMER+3
+   225 3D17 85 8D					sta NOTEPTR
+   226 3D19 85 91					sta PLAYPTR
+   227 3D1B A9 50					lda #$50
+   228 3D1D 85 8E					sta NOTEPTR+1
+   229 3D1F 85 92					sta PLAYPTR+1
+   230 3D21 A9 14					lda #"4"
+   231 3D23 8D 7A 43					sta COUNTER
+   232 3D26 A9 26					lda #"F"
+   233 3D28 8D 7B 43					sta COUNTER+1
+   234 3D2B 8D 7C 43					sta COUNTER+2
+   235 3D2E 8D 7D 43					sta COUNTER+3
+   236
+   237 3D31 A5 98		nokey		lda ACTL
+   238 3D33 8D 08 D2					sta AUDCTL
+   239 3D36 85 97					sta TEMP
+   240
+   241 3D38 A0 5F					ldy #95			; display AUDCTL bits on screen
+   242 3D3A A2 08					ldx #8
+   243 3D3C 20 06 40					jsr showbits
+   244 3D3F 20 4F 40					jsr equalizer
+   245
+   246 3D42 A0 03					ldy #3				; display AUDC1-4 bits 5-7 on screen
+   247 3D44 B9 99 00		nextaudc	lda AC1,y
+   248 3D47 18						clc
+   249 3D48 6A						ror
+   250 3D49 6A						ror
+   251 3D4A 6A						ror
+   252 3D4B 6A						ror
+   253 3D4C 6A						ror
+   254 3D4D 85 97					sta TEMP
+   255 3D4F 98						tya
+   256 3D50 48						pha
+   257 3D51 B9 BA 00					lda AUDCOffset,y
+   258 3D54 A8						tay
+   259 3D55 A2 03					ldx #3
+   260 3D57 20 06 40					jsr showbits
+   261 3D5A 68						pla
+   262 3D5B A8						tay
+   263 3D5C 88						dey
+   264 				;			cpy #0
+   265 3D5D 10 E5					bpl nextaudc
+   266
+   267 3D5F AD 10 D0					lda TRIG0			; Trigger 0 contains Bit 1 of voice channel
+   268 3D62 0A						asl
+   269 3D63 18						clc
+   270 3D64 6D 11 D0					adc TRIG1			; Trigger 1 contains Bit 0 of voice channel
+   271 3D67 85 81					sta VOICE			; VOICE contains voice channel
+   272 3D69 AA						tax					; store VOICE in X
+   273
+   274 3D6A AD 00 D3					lda PORTA			; read joysticks 1+2
+   275 3D6D C5 A1					cmp PORTASAVE		; check if same or different note/voice combination than before
+   276 3D6F D0 09					bne play			; otherwise playing live would work, but saved data would fill up at once
+   277 3D71 A5 81					lda VOICE
+   278 3D73 C5 A2					cmp VOICESAVE
+   279 3D75 D0 03					bne play
+   280 3D77 4C 2A 3C					jmp MainLoop
+   281
+   282 				/*
+   283 							cmp #%10011111
+   284 							bmi play
+   285 							jmp MainLoop
+   286 				*/
+   286
+   287
+   288 3D7A AD 00 D3		play		lda PORTA
+   289
+   290 				/*
+   291 							lda CHTemp			; Dummy generation of Midi
+   292 							cmp #255
+   293 							bne playtemp
+   294 							jmp MainLoop
+   295 				playtemp	lda #0
+   296 							sta VOICE
+   297 							tax
+   298 							inc TempMidi
+   299 							lda TempMidi
+   300 							cmp #6
+   301 							bne endtemp
+   302 							lda #0
+   303 							sta TempMidi
+   304 				endtemp		ldy TempMidi
+   305 							lda TempData,y
+   306 				*/
+   306
+   307
+   308 3D7D 85 A1					sta PORTASAVE
+   309 3D7F 86 A2					stx VOICESAVE
+   310 3D81 85 80					sta MIDI			; and store in variable
+   311 3D83 85 97					sta TEMP
+   312
+   313 3D85 A9 FF					lda #255
+   314 3D87 85 C5					sta CHTemp
+   315
+   316 3D89 A5 81					lda VOICE			; Check for 16-bit voices (Midi-Channel 1 and 3)
+   317 3D8B C9 02					cmp #2
+   318 3D8D F0 0C					beq checkv3
+   319 3D8F C9 00					cmp #0
+   320 3D91 D0 0E					bne nosxbit
+   321 3D93 A5 98					lda ACTL			; Voice 1 16-bit?
+   322 3D95 29 10					and #%00010000		; Compare with AUDCTL-Bit 3
+   323 3D97 D0 0A					bne sxbit
+   324 3D99 F0 06					beq nosxbit
+   325 3D9B A5 98		checkv3		lda ACTL			; Voice 3 16-bit?
+   326 3D9D 29 08					and #%00001000		; Compare with AUDCTL-Bit 4
+   327 3D9F D0 02					bne sxbit
+   328 3DA1 A9 00		nosxbit		lda #0				; Clear SXBITFLAG
+   329 3DA3 85 9E		sxbit		sta SXBITFLAG		; Or set it with $08/$10 respectively
+   330 							
+   331 3DA5 A4 81					ldy VOICE
+   332 				;			lda MIDI
+   333 				;			lda POKEYOffset,y
+   334 3DA7 98						tya
+   335 3DA8 0A						asl
+   336 3DA9 A8						tay					; Y carries AUDF/C-Offset						
+   337
+   338 3DAA A5 80					lda MIDI
+   339 3DAC 29 7F					and #%01111111		; isolate sound parameter (pitch or volume) from data 
+   340 3DAE 85 82					sta PARAM
+   341 3DB0 A5 80					lda MIDI
+   342 3DB2 29 80					and #%10000000		; isolate command (bit 7)
+   343 3DB4 C9 80					cmp #%10000000		; if set then volume, otherwise pitch
+   344 3DB6 D0 4E					bne setpitch
+   345
+   346 3DB8 18			setvolume	clc
+   347 3DB9 98						tya					; AUDC1,2,3,4 distance = 2 each
+   348 3DBA 6A						ror					; AC1,2,3,4 distance = 1 each
+   349 3DBB AA						tax					; i.e. Y=6, X=3
+   350 3DBC A5 9E					lda SXBITFLAG		; But...
+   351 3DBE F0 02					beq cont8bit
+   352 3DC0 C8						iny					; ...if 16-bit voice then volume goes to channel+1 (i.e. Y=Y+2, X remains)
+   353 3DC1 C8						iny
+   354 3DC2 A5 82		cont8bit	lda PARAM
+   355 3DC4 29 0F					and #%00001111
+   356 3DC6 95 A3					sta VOLSAVE,x
+   357 3DC8 C9 00					cmp #0				; Voice off, begin release phase?
+   358 3DCA D0 16					bne newnote
+   359 3DCC B5 AF					lda ADSRActive,x	; are we in ADSR mode?
+   360 3DCE F0 1B					beq contvolume
+   361 3DD0 98						tya
+   362 3DD1 48						pha
+   363 3DD2 BC 00 4F					ldy ADSRStart,x
+   364 3DD5 B9 05 4F					lda ADSRTable,y
+   365 3DD8 18						clc
+   366 3DD9 69 01					adc #1
+   367 				;			lda RelOffset,x		; set beginning of release phase values
+   368 3DDB 95 B3					sta ADSRC,x			; to counter
+   369 				;			lda AC1,x
+   370 				;			sta AUDC1,y
+   371 3DDD 68						pla
+   372 3DDE A8						tay
+   373 3DDF 4C EB 3D					jmp contvolume
+   374 3DE2 A9 01		newnote		lda #1
+   375 3DE4 95 B3					sta ADSRC,x
+   376 3DE6 A9 00					lda #0
+   377 3DE8 99 01 D2					sta AUDC1,y
+   378 3DEB A9 01		contvolume	lda #1
+   379 3DED 95 AF					sta ADSRActive,x
+   380 3DEF B5 A3					lda VOLSAVE,x
+   381 3DF1 18						clc
+   382 3DF2 75 99					adc AC1,x
+   383 				;			sta AUDC1,y			; do not play note when envelopes are active
+   384 3DF4 20 66 3F		jmpsave		jsr savenote
+   385 3DF7 B5 A3					lda VOLSAVE,x
+   386 				;			cmp #0
+   387 3DF9 D0 08					bne jmpmainl2
+   388 3DFB 85 97					sta TEMP
+   389 3DFD 8A						txa
+   390 3DFE 0A						asl
+   391 3DFF A8						tay
+   392 3E00 20 21 40					jsr dispnotes
+   393 3E03 4C 2A 3C		jmpmainl2	jmp MainLoop		; jump back to main loop and wait for next lot of data
+   394
+   395 3E06			setpitch
+   396 3E06 A6 81					ldx VOICE			; Voice to X
+   397 3E08 B5 99					lda AC1,x			; Read distortion of voice X and use appropriate scale
+   398 3E0A C9 20					cmp #$20
+   399 3E0C F0 1F					beq D2
+   400 3E0E C9 C0					cmp #$c0
+   401 3E10 F0 36					beq D12
+   402 3E12 A6 82		D10			ldx PARAM			; Midi-Note to X
+   403 3E14 A5 9E					lda SXBITFLAG		; 16-bit voice?
+   404 3E16 D0 08					bne D10SX
+   405 3E18 BD 00 49					lda NotesD10,x
+   406 3E1B 85 83					sta NOTE
+   407 3E1D 4C 7B 3E					jmp setfreq
+   408 3E20 BD 7F 49		D10SX		lda NotesD10SXL,x	; Load (L)ow and (H)igh byte of (S)i(X)teen Bit value
+   409 3E23 85 83					sta NOTE			; and store in low...
+   410 3E25 BD FE 49					lda NotesD10SXH,x
+   411 3E28 85 84					sta NOTE+1			; and high byte respectively.
+   412 3E2A 4C 7B 3E					jmp setfreq
+   413 3E2D A6 82		D2			ldx PARAM			; Midi-Note to X
+   414 3E2F A5 9E					lda SXBITFLAG
+   415 3E31 D0 08					bne D2SX
+   416 3E33 BD 7D 4A					lda NotesD2,x
+   417 3E36 85 83					sta NOTE
+   418 3E38 4C 7B 3E					jmp setfreq
+   419 3E3B BD FC 4A		D2SX		lda NotesD2SXL,x
+   420 3E3E 85 83					sta NOTE
+   421 3E40 BD 7B 4B					lda NotesD2SXH,x
+   422 3E43 85 84					sta NOTE+1
+   423 3E45 4C 7B 3E					jmp setfreq
+   424 3E48 A6 82		D12			ldx PARAM			; Midi-Note to X
+   425 3E4A A5 9E					lda SXBITFLAG
+   426 3E4C D0 12					bne D12SX
+   427 3E4E A5 9D					lda D12FLAG
+   428 3E50 D0 06					bne D12b
+   429 3E52 BD FA 4B					lda NotesD12,x
+   430 3E55 4C 5B 3E					jmp setnote
+   431 3E58 BD 77 4D		D12b		lda NotesD12b,x
+   432 3E5B 85 83		setnote		sta NOTE
+   433 3E5D 4C 7B 3E					jmp setfreq
+   434 3E60 A5 9D		D12SX		lda D12FLAG
+   435 3E62 D0 0D					bne D12bSX
+   436 3E64 BD 79 4C					lda NotesD12SXL,x
+   437 3E67 85 83					sta NOTE
+   438 3E69 BD F8 4C					lda NotesD12SXH,x
+   439 3E6C 85 84					sta NOTE+1
+   440 3E6E 4C 7B 3E					jmp setfreq
+   441 3E71 BD F6 4D		D12bSX		lda NotesD12bSXL,x
+   442 3E74 85 83					sta NOTE
+   443 3E76 BD 75 4E					lda NotesD12bSXH,x
+   444 3E79 85 84					sta NOTE+1
+   445 				;			jmp setfreq
+   446 							
+   447 3E7B 20 21 40		setfreq		jsr dispnotes
+   448 3E7E A5 83					lda NOTE
+   449 3E80 99 00 D2					sta AUDF1,y			; store the data in the audio frequency register of channel 0 + offset
+   450 3E83 A5 9E					lda SXBITFLAG
+   451 3E85 F0 0C					beq jmpmainl
+   452 3E87 A9 00					lda #0
+   453 3E89 99 01 D2					sta AUDC1,y
+   454 3E8C C8						iny
+   455 3E8D C8						iny
+   456 3E8E A5 84					lda NOTE+1
+   457 3E90 99 00 D2					sta AUDF1,y
+   458 							
+   459 				/*
+   460 				dispnotes	ldy #95				; display note bits on screen
+   461 							ldx #8
+   462 							lda TEMP
+   463 							jsr shownotes
+   464 				*/
+   464
+   465 							
+   466 3E93 4C 2A 3C		jmpmainl	jmp MainLoop
+   467 3E96 4C 39 3F		jmpexitp	jmp exitplay
+   468
+   469 3E99 A9 00		playram		lda #0
+   470 3E9B 85 85					sta NOTETIMER
+   471 3E9D 85 86					sta NOTETIMER+1
+   472 3E9F 85 87					sta NOTETIMER+2
+   473 3EA1 85 88					sta NOTETIMER+3
+   474 3EA3 8D FC 02					sta CH
+   475 3EA6 85 91					sta PLAYPTR
+   476 3EA8 A9 50					lda #$50
+   477 3EAA 85 92					sta PLAYPTR+1
+   478 3EAC 85 A0					sta PLAYFLAG
+   479 3EAE AD FC 02		playloop	lda CH
+   480 3EB1 C9 0A					cmp #$0a
+   481 3EB3 F0 E1					beq jmpexitp
+   482 3EB5 A5 92					lda PLAYPTR+1
+   483 3EB7 C5 8E					cmp NOTEPTR+1
+   484 3EB9 90 06					bcc doplay
+   485 3EBB A5 91					lda PLAYPTR
+   486 3EBD C5 8D					cmp NOTEPTR
+   487 3EBF B0 78					bcs exitplay
+   488 3EC1 A0 00		doplay		ldy #0
+   489 3EC3 B1 91					lda (PLAYPTR),y
+   490 3EC5 AA						tax						; voice to X
+   491 3EC6 C8						iny
+   492 3EC7 B1 91					lda (PLAYPTR),y
+   493 3EC9 85 93					sta PLAYAUDC			; save AUDC-value
+   494 3ECB C8						iny
+   495 3ECC B1 91					lda (PLAYPTR),y
+   496 3ECE 85 94					sta PLAYNOTE			; save note
+   497 3ED0 C8						iny
+   498 3ED1 B1 91					lda (PLAYPTR),y
+   499 3ED3 85 95					sta PLAYTIMER			; save timer low-byte
+   500 3ED5 C8						iny
+   501 3ED6 B1 91					lda (PLAYPTR),y
+   502 3ED8 85 96					sta PLAYTIMER+1			; save timer high-byte
+   503 				;			lda POKEYOffset,x
+   504 3EDA 8A						txa
+   505 3EDB 0A						asl
+   506 3EDC A8						tay						; Offset to Y
+   507 3EDD B9 86 00		waittimer	lda NOTETIMER+1,y
+   508 3EE0 C5 96					cmp PLAYTIMER+1			; Playtimer >= Notetimer (high byte)?
+   509 3EE2 90 F9					bcc waittimer
+   510 3EE4 B9 85 00					lda NOTETIMER,y
+   511 3EE7 C5 95					cmp PLAYTIMER			; Playtimer >= Notetimer (low byte)?
+   512 3EE9 90 F2					bcc waittimer
+   513 3EEB A9 00					lda #0					; First reset counters...
+   514 3EED 85 95					sta PLAYTIMER
+   515 3EEF 85 96					sta PLAYTIMER+1
+   516 3EF1 99 85 00					sta NOTETIMER,y
+   517 3EF4 99 86 00					sta NOTETIMER+1,y
+   518 3EF7 A5 93					lda PLAYAUDC			; then play note...
+   519 3EF9 29 F0					and #%11110000
+   520 3EFB 95 99					sta AC1,x
+   521 3EFD A9 01					lda #1
+   522 3EFF 95 AF					sta ADSRActive,x
+   523 3F01 A5 93					lda PLAYAUDC
+   524 3F03 29 0F					and #%00001111
+   525
+   526 3F05 48						pha
+   527 3F06 C9 00					cmp #0				; Voice off, begin release phase?
+   528 3F08 D0 11					bne contADS
+   529 3F0A 98						tya
+   530 3F0B 48						pha
+   531 3F0C BC 00 4F					ldy ADSRStart,x
+   532 3F0F B9 05 4F					lda ADSRTable,y
+   533 3F12 18						clc
+   534 3F13 69 01					adc #1
+   535 				;			lda RelOffset,x		; set beginning of release phase values
+   536 3F15 95 B3					sta ADSRC,x			; to counter
+   537 3F17 68						pla
+   538 3F18 A8						tay
+   539 3F19 10 04					bpl contplay
+   540 3F1B A9 01		contADS		lda #1
+   541 3F1D 95 B3					sta ADSRC,x
+   542 3F1F 68			contplay	pla
+   543
+   544 3F20 95 A3					sta VOLSAVE,x
+   545 				;			sta AUDC1,y
+   546 3F22 A5 94					lda PLAYNOTE
+   547 3F24 99 00 D2					sta AUDF1,y
+   548 3F27 18						clc
+   549 3F28 A5 91					lda PLAYPTR
+   550 3F2A 69 05					adc #$05				; increase pointer
+   551 3F2C 85 91					sta PLAYPTR
+   552 3F2E 90 06					bcc jmpplayl
+   553 3F30 A5 92					lda PLAYPTR+1
+   554 3F32 69 00					adc #0
+   555 3F34 85 92					sta PLAYPTR+1
+   556 3F36 4C AE 3E		jmpplayl	jmp playloop
+   557 							
+   558 3F39 A0 03		exitplay	ldy #3
+   559 3F3B B9 AF 00		waitenvend	lda ADSRActive,y
+   560 3F3E D0 FB					bne waitenvend
+   561 3F40 88						dey
+   562 3F41 10 F8					bpl waitenvend
+   563 3F43 A0 03					ldy #3
+   564 3F45 A9 00					lda #0
+   565 3F47 85 A0					sta PLAYFLAG
+   566 3F49 99 85 00		clearplayer	sta NOTETIMER,y
+   567 3F4C 99 01 D2					sta AUDC1,y
+   568 3F4F 99 05 D2					sta AUDC1+4,y
+   569 3F52 99 AF 00					sta ADSRActive,y
+   570 3F55 99 B3 00					sta ADSRC,y
+   571 3F58 99 AB 00					sta DispVol,y
+   572 3F5B 88						dey
+   573 3F5C 10 EB					bpl clearplayer
+   574 3F5E A9 FF					lda #255
+   575 3F60 8D FC 02					sta CH
+   576 3F63 4C 2A 3C					jmp MainLoop
+   577
+   578 3F66 A4 9F		savenote	ldy RECFLAG
+   579 3F68 F0 6B					beq endnotesave
+   580 3F6A A0 00					ldy #0
+   581 3F6C 48						pha					; save distortion
+   582 3F6D A5 8D					lda NOTEPTR			; save note pointer for 16-bit
+   583 3F6F 85 8F					sta TEMPPTR
+   584 3F71 A5 8E					lda NOTEPTR+1
+   585 3F73 85 90					sta TEMPPTR+1
+   586 3F75 8A						txa					; get channel from X
+   587 3F76 91 8D					sta (NOTEPTR),y		; store channel
+   588 3F78 20 D6 3F					jsr incptr
+   589 3F7B 68						pla					; get distortion
+   590 3F7C 91 8D					sta (NOTEPTR),y		; store distortion
+   591 3F7E 20 D6 3F					jsr incptr
+   592 3F81 A5 83					lda NOTE
+   593 3F83 91 8D					sta (NOTEPTR),y		; store note (AUDFx)
+   594 3F85 20 D6 3F					jsr incptr
+   595 3F88 8A						txa					; get channel again...
+   596 3F89 0A						asl					; multiply by 2 for pointer
+   597 3F8A A8						tay					; pointer in Y
+   598 3F8B AA						tax					; save pointer in X, too
+   599 3F8C B9 85 00					lda NOTETIMER,y
+   600 3F8F A0 00					ldy #0
+   601 3F91 91 8D					sta (NOTEPTR),y		; duration (1/50 seconds) of _previous_ note (low-byte)
+   602 3F93 8A						txa					; get pointer from X
+   603 3F94 A8						tay					; pointer in Y
+   604 3F95 B9 86 00					lda NOTETIMER+1,y
+   605 3F98 A0 00					ldy #0
+   606 3F9A C8						iny
+   607 3F9B 91 8D					sta (NOTEPTR),y		; ...high byte
+   608 3F9D 8A						txa					; get pointer from X, again...
+   609 3F9E A8						tay					; pointer in Y
+   610 3F9F A9 00					lda #0				; clear note timer
+   611 3FA1 99 85 00					sta NOTETIMER,y
+   612 3FA4 99 86 00					sta NOTETIMER+1,y
+   613 3FA7 20 D6 3F					jsr incptr
+   614 3FAA 20 D6 3F					jsr incptr
+   615 3FAD A5 9E					lda SXBITFLAG
+   616 3FAF F0 24					beq endnotesave
+   617 3FB1 A0 04					ldy #4				; copy previous voice data to next set
+   618 3FB3 B1 8F		copy16bit	lda (TEMPPTR),y
+   619 3FB5 91 8D					sta (NOTEPTR),y
+   620 3FB7 88						dey
+   621 3FB8 10 F9					bpl copy16bit
+   622 3FBA A0 00					ldy #0
+   623 3FBC B1 8F					lda (TEMPPTR),y
+   624 3FBE 18						clc
+   625 3FBF 69 01					adc #1
+   626 3FC1 91 8D					sta (NOTEPTR),y		; increase channel
+   627 3FC3 C8						iny
+   628 3FC4 A9 00					lda #0
+   629 3FC6 91 8F					sta (TEMPPTR),y		; clear distortion on lower channel
+   630 3FC8 C8						iny
+   631 3FC9 A5 84					lda NOTE+1
+   632 3FCB 91 8D					sta (NOTEPTR),y	
+   633 3FCD A0 04					ldy #4				; adjust note pointer
+   634 3FCF 20 D6 3F		updateptr	jsr incptr
+   635 3FD2 88						dey
+   636 3FD3 10 FA					bpl updateptr
+   637 3FD5 60			endnotesave	rts
+   638
+   639 3FD6 E6 8D		incptr		inc NOTEPTR
+   640 3FD8 D0 02					bne doneinc
+   641 3FDA E6 8E					inc NOTEPTR+1
+   642 3FDC 20 E0 3F		doneinc		jsr showcounter
+   643 3FDF 60						rts
+   644
+   645 3FE0 98			showcounter	tya					; update note counter display
+   646 3FE1 48						pha
+   647 3FE2 A0 03					ldy #3
+   648 3FE4 B9 7A 43		counterloop	lda COUNTER,y
+   649 3FE7 18						clc
+   650 3FE8 69 01					adc #$01
+   651 3FEA C9 1A					cmp #":"
+   652 3FEC F0 06					beq rolloverA
+   653 3FEE C9 27					cmp #"G"
+   654 3FF0 F0 06					beq rollover0
+   655 3FF2 D0 0C					bne norollover
+   656 3FF4 A9 21		rolloverA	lda #"A"
+   657 3FF6 D0 08					bne norollover
+   658 3FF8 A9 10		rollover0	lda #"0"
+   659 3FFA 99 7A 43		nextdigit	sta COUNTER,y
+   660 3FFD 88						dey
+   661 3FFE 10 E4					bpl counterloop
+   662 4000 99 7A 43		norollover	sta COUNTER,y
+   663 4003 68						pla
+   664 4004 A8						tay
+   665 4005 60						rts
+   666
+   667 4006 A5 97		showbits	lda TEMP
+   668 4008 29 01					and #1
+   669 400A C9 01					cmp #1
+   670 400C D0 04					bne zero
+   671 400E B5 D1					lda BitTable-1,x
+   672 4010 10 02					bpl output
+   673 4012 A9 0D		zero		lda #"-"
+   674 4014 91 58		output		sta (88),y
+   675 4016 A5 97					lda TEMP
+   676 4018 18						clc
+   677 4019 6A						ror
+   678 401A 85 97					sta TEMP
+   679 401C 88						dey
+   680 401D CA						dex
+   681 				;			cpx #0
+   682 401E D0 E6					bne showbits
+   683 4020 60						rts
+   684
+   685 4021 84 80		dispnotes	sty MIDI			; save voice index in variable MIDI temporarily
+   686 4023 98						tya
+   687 4024 18						clc
+   688 4025 6A						ror
+   689 4026 AA						tax
+   690 4027 E0 04					cpx #4				; number of voices
+   691 4029 B0 21					bcs exitequ
+   692 402B BD AD 41					lda EquOffset,x
+   693 402E A8						tay
+   694 402F A2 08					ldx #8
+   695 4031 A5 97		nextbit		lda TEMP
+   696 4033 29 01					and #1
+   697 4035 C9 01					cmp #1
+   698 4037 D0 04					bne zero2
+   699 4039 B5 D1					lda BitTable-1,x
+   700 403B 10 02					bpl output2
+   701 403D A9 0D		zero2		lda #"-"
+   702 403F 99 CA 43		output2		sta INTRO+537,y
+   703 4042 A5 97					lda TEMP
+   704 4044 18						clc
+   705 4045 6A						ror
+   706 4046 85 97					sta TEMP
+   707 4048 88						dey
+   708 4049 CA						dex
+   709 				;			cpx #0
+   710 404A D0 E5					bne nextbit
+   711 404C A4 80		exitequ		ldy MIDI			; restore voice index
+   712 404E 60						rts
+   713
+   714
+   715 404F A2 0F		equalizer	ldx #15
+   716 4051 E4 AB		nc1			cpx DispVol
+   717 4053 B0 04					bcs nd1
+   718 4055 A9 80					lda #128
+   719 4057 D0 02					bne d1
+   720 4059 A9 00		nd1			lda #0
+   721 405B 9D B9 43		d1			sta INTRO+520,x		
+   722 405E CA						dex
+   723 				;			cpx #0
+   724 405F 10 F0					bpl nc1
+   725
+   726 4061 A2 0F					ldx #15
+   727 4063 E4 AC		nc2			cpx DispVol+1
+   728 4065 B0 04					bcs nd2
+   729 4067 A9 80					lda #128
+   730 4069 D0 02					bne dr2
+   731 406B A9 00		nd2			lda #0
+   732 406D 9D E1 43		dr2			sta INTRO+560,x		
+   733 4070 CA						dex
+   734 				;			cpx #0
+   735 4071 10 F0					bpl nc2
+   736
+   737 4073 A2 0F					ldx #15
+   738 4075 E4 AD		nc3			cpx DispVol+2
+   739 4077 B0 04					bcs nd3
+   740 4079 A9 80					lda #128
+   741 407B D0 02					bne d3
+   742 407D A9 00		nd3			lda #0
+   743 407F 9D 09 44		d3			sta INTRO+600,x		
+   744 4082 CA						dex
+   745 				;			cpx #0
+   746 4083 10 F0					bpl nc3
+   747
+   748 4085 A2 0F					ldx #15
+   749 4087 E4 AE		nc4			cpx DispVol+3
+   750 4089 B0 04					bcs nd4
+   751 408B A9 80					lda #128
+   752 408D D0 02					bne d4
+   753 408F A9 00		nd4			lda #0
+   754 4091 9D 31 44		d4			sta INTRO+640,x		
+   755 4094 CA						dex
+   756 				;			cpx #0
+   757 4095 10 F0					bpl nc4
+   758 4097 60						rts
+   759
+   760 4098 A9 00		VBI			lda #0
+   761 409A 85 4D					sta ATTRACT
+   762 409C A5 9F					lda RECFLAG
+   763 409E D0 04					bne dotimer
+   764 40A0 A5 A0					lda PLAYFLAG
+   765 40A2 F0 1A					beq donetimer
+   766 40A4 E6 85		dotimer		inc NOTETIMER
+   767 40A6 D0 02					bne donetimer0
+   768 40A8 E6 86					inc NOTETIMER+1
+   769 40AA E6 87		donetimer0	inc NOTETIMER+2
+   770 40AC D0 02					bne donetimer1
+   771 40AE E6 88					inc NOTETIMER+3
+   772 40B0 E6 89		donetimer1	inc NOTETIMER+4
+   773 40B2 D0 02					bne donetimer2
+   774 40B4 E6 8A					inc NOTETIMER+5
+   775 40B6 E6 8B		donetimer2	inc NOTETIMER+6
+   776 40B8 D0 02					bne donetimer3
+   777 40BA E6 8C					inc NOTETIMER+7
+   778 40BC A5 A0		donetimer3	lda PLAYFLAG
+   779
+   780 40BE A2 00		donetimer	ldx #0
+   781 40C0 B5 AF		nextadsr	lda ADSRActive,x	; are we in ADSR mode?
+   782 40C2 D0 03					bne nextadsr2		; if not then next voice
+   783 40C4 4C 52 41					jmp nextx
+   784 40C7 B5 A3		nextadsr2	lda VOLSAVE,x		; get channel's volume
+   785 40C9 48						pha					; save volume
+   786 40CA 8A						txa					; channel no. from X to A 
+   787 40CB BD 00 4F					lda ADSRStart,x
+   788 40CE 18						clc
+   789 40CF 75 B3					adc ADSRC,x			; add counter to create final pointer
+   790 40D1 A8						tay					; store pointer in Y
+   791 40D2 85 B9					sta ADSRTemp		; and in temp variable
+   792 40D4 B9 05 4F					lda ADSRTable,y		; mask DistEnv
+   793 40D7 48						pha
+   794 40D8 29 0F					and #%00001111
+   795 40DA 85 B7					sta ADSRVol
+   796 40DC 68						pla
+   797 40DD 29 F0					and #%11110000
+   798 40DF 85 B8					sta ADSRDist
+   799 40E1 68						pla					; get back volume
+   800
+   801 40E2 C9 00					cmp #0				; are we in release phase
+   802 40E4 D0 0C					bne adsphase
+   803 40E6 18			relphase	clc					; yes, then add value to current sound level (zero)
+   804 				;			adc ADSRTable,y
+   805 40E7 65 B7					adc ADSRVol
+   806 40E9 D5 A7					cmp VOLTemp,x
+   807 40EB 90 10					bcc setadsr
+   808 40ED B5 A7					lda VOLTemp,x
+   809 40EF 4C FD 40					jmp setadsr
+   810
+   811 40F2 38			adsphase	sec					; otherwise, in ADS mode:
+   812 				;			sbc ADSRTable,y		; subtract envelope
+   813 40F3 E5 B7					sbc ADSRVol
+   814 40F5 95 A7					sta VOLTemp,x		; remember last volume level for possible release phase
+   815 40F7 B0 04					bcs setadsr			; less than zero?
+   816 40F9 A9 00					lda #0				; then zero it is.
+   817 40FB 95 A7					sta VOLTemp,x
+   818 40FD 48			setadsr		pha					; save volume to stack
+   819 40FE 95 AB					sta DispVol,x
+   820 4100 A5 B8					lda ADSRDist		; test DistEnv
+   821 4102 D0 07					bne DistEnv
+   822 4104 68						pla
+   823 4105 18						clc
+   824 4106 75 99					adc AC1,x			; either add standard distortion
+   825 4108 4C 0F 41					jmp storeAUDC
+   826 410B 68			DistEnv		pla
+   827 410C 18						clc
+   828 410D 65 B8					adc ADSRDist		; or add distortion from envelope
+   829 				;			lda VOLTemp,x
+   830 				;			clc
+   831 				;			adc AC1,x			; add distortion
+   832 410F 48			storeAUDC	pha					; save resulting AUDC value
+   833 				;			lda POKEYOffset,x	; find out where to store it
+   834 4110 8A						txa
+   835 4111 0A						asl
+   836 4112 A8						tay
+   837 4113 68						pla
+   838 4114 99 01 D2					sta AUDC1,y			; and play
+   839
+   840 4117 BD 01 4F					lda ADSRStart+1,x
+   841 411A 38						sec
+   842 411B FD 00 4F					sbc ADSRStart,x
+   843 411E 95 BE					sta RelMax,x
+   844 				;			sec
+   845 				;			sbc #1
+   846 				;			cmp ADSRC,x
+   847 4120 B5 B3					lda ADSRC,x			; increase envelope counter
+   848 4122 18						clc
+   849 4123 69 01					adc #1
+   850 4125 D5 BE					cmp RelMax,x		; if in release mode
+   851 4127 B0 1B					bcs resetADSR		; check for end of release
+   852 4129 BC 00 4F					ldy ADSRStart,x
+   853 412C D9 05 4F					cmp ADSRTable,y		; otherwise, is ADS stage maxed out?
+   854 412F D0 0E					bne incADSRC		; if not then increase
+   855
+   856 4131 A5 B9					lda ADSRTemp		; get back current counter
+   857 4133 A8						tay
+   858 4134 C8						iny					; increase
+   859 4135 B9 05 4F					lda ADSRTable,y
+   860 4138 F0 18					beq nextx			; if zero then remain at last position
+   861 413A B5 B3					lda ADSRC,x			; otherwise
+   862 413C F9 05 4F					sbc ADSRTable,y		; subtract offset byte (pos. ADSRMax)
+   863 413F 95 B3		incADSRC	sta ADSRC,x			; and set counter accordingly
+   864 4141 4C 52 41					jmp nextx
+   865
+   866 4144 A9 01		resetADSR	lda #1
+   867 4146 95 B3					sta ADSRC,x
+   868 4148 A9 00					lda #0
+   869 414A 95 AF					sta ADSRActive,x
+   870 414C 85 B7					sta ADSRVol
+   871 414E 85 B8					sta ADSRDist
+   872 4150 95 A7					sta VolTemp,x
+   873
+   874 4152 E8			nextx		inx
+   875 4153 E0 04					cpx #4
+   876 4155 D0 03					bne jmpnextadsr
+   877 4157 4C 5F E4					jmp $e45f
+   878 415A 4C C0 40		jmpnextadsr	jmp nextadsr
+   879
+   880 415D 70 70 70 42		DLIST		.byte $70, $70, $70, $42
+   881 4161 B1 41					.word INTRO
+   882 4163 02 02 02 02 02 02 + 			.byte 2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2
+   883 417A 41						.byte $41
+   884 417B 5D 41				    .word DLIST
+   885
+   886 417D 2F 2E 2A 28 2D 2B + AUDCTLKeys	.byte $2f, $2e, $2a, $28, $2d, $2b, $0b, $0d
+   887 4185 80 40 20 10 08 04 + AUDCTLVals	.byte 128, 64, 32, 16, 8, 4, 2, 1
+   888 418D 3A 3E 3F 39 3D 38 + ACKeys		.byte $3a, $3e, $3f, $39, $3d, $38, $12, $16, $17, $23, $15, $10
+   889 4199 20 40 80 20 40 80 + ACVals		.byte 32, 64, 128, 32, 64, 128, 32, 64, 128, 32, 64, 128
+   890 41A5 1F 1E 1A 18 1D 1B + EnvKeys		.byte $1f, $1e, $1a, $18, $1d, $1b, $33, $35
+   891 41AD 07 2F 57 7F		EquOffset	.byte 7, 47, 87, 127
+   892 				; TempData	.byte 143,65,135,65,128,50
+   893 				; TEMPCOUNT	.byte 0
+   894 				; TempMIDI	.byte 0
+   895
+   896 41B1 00 00 00 2D 69 64 + INTRO		.byte "   MidiJoy (c) 2014 by Frederik Holst"
+   897 41D6						org INTRO+80
+   898 4201-4207> 21 35 24 23 + 			.byte "AUDCTL:"
+   899 4208						org INTRO+97
+   900 4212-4222> 21 35 24 23 + 			.byte "AUDC1:     AUDC2:"
+   901 4223						org INTRO+120
+   902 4229-4238> 25 6E 76 0E + 			.byte "Env.No.:"
+   903 4231 11 12 13 14 15 16 + EnvBank		.byte "12345678"
+   904 4239						org INTRO+137
+   905 423A-424A> 21 35 24 23 + 			.byte "AUDC3:     AUDC4:"
+   906 424B						org INTRO+200
+   907 4279-4285> 2B 65 79 00 + 			.byte "Key Commands:"
+   908 4286						org INTRO+240
+   909 42A1-42C3> 31 0D 29 1A + 			.byte "Q-I: Set AUDCTL  A-H,Z-N: Set AUDCx"
+   910 42C4						org INTRO+280
+   911 42C9-430E> 11 0D 18 1A + 			.byte "1-8: Select Env. SPACE: Toggle D12 Dist."
+   912 42F1						org INTRO+320
+   913 42F1 2A 1A 00 2A 75 6D + 			.byte "J: Jump to DOS   RETURN: Reset"
+   914 430F						org INTRO+360
+   915 4319-4340> 30 1A 00 30 + 			.byte "P: Play Note-RAM TAB: Un/Pause Recording"
+   916 4341						org INTRO+440
+   917 4369-437D> 2E 6F 74 65 + 			.byte "Note-RAM: $5000-$"
+   918 437A 14 26 26 26		COUNTER		.byte "4FFF"
+   919 437E						org INTRO+760
+   920 44A9-44A9> 00		MSG			.byte " "
+   921 44AA						org INTRO+800
+   922 44D1-44EB> 00 00 00 00 + 			.byte "           Serial No.: 0000"
+   923 44EC						org INTRO+920
+   924 4549-4566> 00 00 00 00 + 			.byte "       http://www.phobotron.de"
+   925
+   926 4567						org $4900
+   927
+   928 4900-4EF3> F3 E6 D9 CC + NotesD10	.byte $F3, $E6, $D9, $CC, $C1, $B6, $AC, $A2, $99, $90, $88, $80, $F3, $E6, $D9, $CC, $C1, $B6, $AC, $A2, $99, $90, $88, $80, $F3, $E6, $D9, $CC, $C1, $B6, $AC, $A2, $99, $90, $88, $80, $F3, $E6, $D9, $CC, $C1, $B6, $AC, $A2, $99, $90, $88, $80, $F3, $E6, $D9, $CC, $C1, $B6, $AC, $A2, $99, $90, $88, $80, $79, $72, $6C, $66, $60, $5B, $55, $51, $4C, $48, $44, $40, $3C, $39, $35, $32, $2F, $2D, $2A, $28, $25, $23, $21, $1F, $1E, $1C, $1A, $19, $17, $16, $15, $13, $12, $11, $10, $0F, $0E, $1C, $1A, $19, $17, $16, $15, $13, $12, $11, $10, $0F, $0E, $1C, $1A, $19, $17, $16, $15, $13, $12, $11, $10, $0F, $0E, $1C, $1A, $19, $17, $16, $15
+   929 497F DD DD 34 DB D0 0D + NotesD10SXL	.byte $DD, $DD, $34, $DB, $D0, $0D, $8E, $50, $4F, $88, $F7, $99, $DD, $DD, $34, $DB, $D0, $0D, $8E, $50, $4F, $88, $F7, $99, $DD, $DD, $34, $DB, $D0, $0D, $8E, $50, $4F, $88, $F7, $99, $6B, $6B, $96, $EA, $64, $03, $C4, $A5, $A4, $C0, $F8, $49, $B2, $32, $C8, $72, $2F, $FE, $DE, $CF, $CF, $DD, $F8, $21, $56, $96, $E0, $35, $94, $FB, $6C, $E4, $64, $EB, $79, $0D, $A7, $47, $ED, $97, $46, $FA, $B2, $6E, $2E, $F2, $B9, $83, $50, $20, $F3, $C8, $A0, $7A, $56, $34, $14, $F5, $D9, $BE, $A5, $8D, $76, $61, $4C, $39, $27, $16, $06, $F7, $E9, $DB, $CF, $C3, $B7, $AD, $A3, $99, $90, $88, $80, $78, $71, $6A, $64, $5E, $58, $53, $4E, $49, $45
+   930 49FE 6A 64 5F 59 54 50 + NotesD10SXH	.byte $6A, $64, $5F, $59, $54, $50, $4B, $47, $43, $3F, $3B, $38, $6A, $64, $5F, $59, $54, $50, $4B, $47, $43, $3F, $3B, $38, $6A, $64, $5F, $59, $54, $50, $4B, $47, $43, $3F, $3B, $38, $35, $32, $2F, $2C, $2A, $28, $25, $23, $21, $1F, $1D, $1C, $1A, $19, $17, $16, $15, $13, $12, $11, $10, $0F, $0E, $0E, $0D, $0C, $0B, $0B, $0A, $09, $09, $08, $08, $07, $07, $07, $06, $06, $05, $05, $05, $04, $04, $04, $04, $03, $03, $03, $03, $03, $02, $02, $02, $02, $02, $02, $02, $01, $01, $01, $01, $01, $01, $01, $01, $01, $01, $01, $01, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00
+   931 4A7D 1F 1D 1B 1A 18 17 + NotesD2		.byte $1F, $1D, $1B, $1A, $18, $17, $15, $14, $13, $12, $11, $10, $0F, $0E, $0D, $0C, $0B, $0B, $0A, $09, $09, $08, $08, $07, $07, $06, $06, $05, $05, $05, $04, $04, $04, $03, $03, $03, $03, $02, $02, $02, $02, $02, $01, $01, $01, $01, $01, $01, $01, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $01, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $01, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $01, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $01, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $01, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $01
+   932 4AFC 6C 3A 0B DF B6 8E + NotesD2SXL	.byte $6C, $3A, $0B, $DF, $B6, $8E, $69, $47, $25, $06, $E8, $CD, $6C, $3A, $0B, $DF, $B6, $8E, $69, $47, $25, $06, $E8, $CD, $B5, $9A, $82, $6C, $57, $44, $32, $20, $0F, $00, $F0, $E3, $D6, $C9, $BE, $B2, $A7, $9E, $95, $8C, $84, $7C, $74, $6E, $67, $61, $5C, $55, $51, $4C, $47, $43, $3E, $3A, $36, $33, $30, $2D, $2A, $27, $25, $22, $20, $1E, $1C, $1A, $19, $16, $15, $13, $12, $10, $0F, $0E, $0C, $0B, $0A, $09, $08, $07, $07, $13, $12, $10, $0F, $0E, $0C, $0B, $0A, $09, $08, $07, $07, $13, $12, $10, $0F, $0E, $0C, $0B, $0A, $09, $08, $07, $07, $13, $12, $10, $0F, $0E, $0C, $0B, $0A, $09, $08, $07, $07, $13, $12, $10, $0F, $0E, $0C
+   933 4B7B 03 03 03 02 02 02 + NotesD2SXH	.byte $03, $03, $03, $02, $02, $02, $02, $02, $02, $02, $01, $01, $03, $03, $03, $02, $02, $02, $02, $02, $02, $02, $01, $01, $01, $01, $01, $01, $01, $01, $01, $01, $01, $01, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00
+   934 4BFA 82 7B 75 6C 67 61 + NotesD12	.byte $82, $7B, $75, $6C, $67, $61, $5D, $55, $52, $4C, $48, $43, $3F, $3D, $39, $37, $33, $30, $2D, $2B, $28, $25, $24, $21, $1F, $1E, $1C, $1B, $19, $47, $16, $15, $3E, $12, $35, $10, $0F, $29, $29, $29, $0C, $23, $0A, $0A, $3E, $12, $35, $10, $0F, $29, $29, $29, $0C, $23, $0A, $0A, $3E, $12, $35, $10, $0F, $29, $29, $29, $0C, $23, $0A, $0A, $3E, $12, $35, $10, $0F, $29, $29, $29, $0C, $23, $0A, $0A, $3E, $12, $35, $10, $0F, $29, $29, $29, $0C, $23, $0A, $0A, $3E, $12, $35, $10, $0F, $29, $29, $29, $0C, $23, $0A, $0A, $3E, $12, $35, $10, $0F, $29, $29, $29, $0C, $23, $0A, $0A, $3E, $12, $35, $10, $0F, $29, $29, $29, $0C, $23, $0A
+   935 4C79 3A 6C AC F5 49 A7 + NotesD12SXL	.byte $3A, $6C, $AC, $F5, $49, $A7, $0F, $8A, $F4, $71, $F9, $86, $26, $B2, $51, $F7, $A1, $50, $04, $BC, $75, $35, $F9, $C0, $8A, $57, $27, $F8, $CD, $A4, $7D, $59, $37, $17, $F9, $DB, $C2, $A8, $8F, $78, $63, $4E, $3B, $29, $18, $08, $F9, $EB, $DC, $CF, $C4, $B8, $AE, $A2, $9A, $91, $87, $81, $79, $72, $6A, $64, $5E, $5A, $54, $4F, $48, $45, $40, $3D, $39, $36, $31, $2E, $2D, $2A, $27, $24, $22, $1F, $1E, $1B, $19, $17, $15, $4A, $47, $41, $3E, $3B, $38, $1F, $1E, $1B, $19, $17, $15, $4A, $47, $41, $3E, $3B, $38, $1F, $1E, $1B, $19, $17, $15, $4A, $47, $41, $3E, $3B, $38, $1F, $1E, $1B, $19, $17, $15, $4A, $47, $41, $3E, $3B, $38
+   936 4CF8 0E 0D 0C 0B 0B 0A + NotesD12SXH	.byte $0E, $0D, $0C, $0B, $0B, $0A, $0A, $09, $08, $08, $07, $07, $07, $06, $06, $05, $05, $05, $05, $04, $04, $04, $03, $03, $03, $03, $03, $02, $02, $02, $02, $02, $02, $02, $01, $01, $01, $01, $01, $01, $01, $01, $01, $01, $01, $01, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00
+   937 4D77 F5 E9 DA CE C5 B6 + NotesD12b	.byte $F5, $E9, $DA, $CE, $C5, $B6, $AD, $A7, $9B, $92, $89, $83, $F5, $E9, $DA, $CE, $C5, $B6, $AD, $A7, $9B, $92, $89, $83, $7A, $74, $B8, $65, $62, $5C, $56, $50, $4D, $47, $44, $41, $3E, $38, $35, $32, $2F, $29, $29, $29, $26, $23, $20, $20, $1A, $1A, $1A, $32, $2F, $29, $29, $29, $26, $23, $20, $20, $1A, $1A, $1A, $32, $2F, $29, $29, $29, $26, $23, $20, $20, $1A, $1A, $1A, $32, $2F, $29, $29, $29, $26, $23, $20, $20, $1A, $1A, $1A, $32, $2F, $29, $29, $29, $26, $23, $20, $20, $1A, $1A, $1A, $32, $2F, $29, $29, $29, $26, $23, $20, $20, $1A, $1A, $1A, $32, $2F, $29, $29, $29, $26, $23, $20, $20, $1A, $1A, $1A, $32, $2F, $29, $29
+   938 4DF6 BC 55 12 FC E9 03 + NotesD12bSXL	.byte $BC, $55, $12, $FC, $E9, $03, $38, $85, $E7, $64, $F9, $A0, $7D, $27, $07, $F3, $F1, $FB, $1D, $3F, $70, $AD, $F9, $4E, $A9, $10, $80, $F6, $75, $FA, $8B, $1C, $B3, $53, $F9, $A2, $51, $06, $BB, $79, $37, $FB, $BF, $89, $56, $26, $F9, $CC, $A5, $81, $5A, $39, $18, $FA, $DC, $C1, $A6, $91, $79, $64, $4F, $3A, $28, $19, $0A, $FB, $EC, $DD, $D1, $C5, $B9, $B0, $A4, $9B, $92, $89, $83, $7A, $6E, $6B, $65, $5F, $59, $50, $4D, $4A, $47, $41, $3E, $3B, $38, $6B, $65, $5F, $59, $50, $4D, $4A, $47, $41, $3E, $3B, $38, $6B, $65, $5F, $59, $50, $4D, $4A, $47, $41, $3E, $3B, $38, $6B, $65, $5F, $59, $50, $4D, $4A, $47, $41, $3E, $3B, $38
+   939 4E75 2A 28 26 23 21 20 + NotesD12bSXH	.byte $2A, $28, $26, $23, $21, $20, $1E, $1C, $1A, $19, $17, $16, $15, $14, $13, $11, $10, $0F, $0F, $0E, $0D, $0C, $0B, $0B, $0A, $0A, $09, $08, $08, $07, $07, $07, $06, $06, $05, $05, $05, $05, $04, $04, $04, $03, $03, $03, $03, $03, $02, $02, $02, $02, $02, $02, $02, $01, $01, $01, $01, $01, $01, $01, $01, $01, $01, $01, $01, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00
+   940
+   941 				/*
+   942 							org $3400
+   943
+   944 							.byte ADS1-ADS1, ADS2-ADS1, ADS3-ADS1, ADS4-ADS1, EndADSR-ADS1
+   945 				ADS1		.byte Rel1-ADS1-1
+   946 							.byte 15,15,14,14,13,13,12,12,11,11,10,10,9,9,8,8,7,7,6,6,5,5,4,4,3,3,2,2,1,1,0,0,6
+   947 				Rel1		.byte 6,6,5,5,4,4,3,3,2,2,1,1,0,0
+   948 				ADS2		.byte Rel2-ADS2-1
+   949 							.byte 0,0,1,1,2,2,3,3,4,4,5,5,6,6,7,7,8,8,7,7,6,6,5,5,4,4,3,3,2,2,1,1,0,0,0
+   950 				Rel2		.byte 0,15,0
+   951 				ADS3		.byte Rel3-ADS3-1
+   952 							.byte 0,0,1,1,2,2,3,3,4,4,5,5,6,6,7,7,8,8,9,9,10,10,11,11,12,12,0
+   953 				Rel3		.byte 6,6,5,5,4,4,3,3,2,2,1,1,0,0
+   954 				ADS4		.byte Rel4-ADS4-1
+   955 							.byte $80+0,0,$80+15,15,3
+   956 				Rel4		.byte 6,6,5,5,4,4,3,3,2,2,1,1,0,0
+   957 				EndADSR		
+   958 				*/
+   958

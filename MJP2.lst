@@ -1,0 +1,277 @@
+mads 1.9.3
+     1 FFFF> 02E0-02E1> 19 40				run start
+     2
+     3 = 004D						ATTRACT = $4d
+     4 = 02FC						CH = $2fc
+     5 = D010						TRIG0 = $d010
+     6 = D011						TRIG1 = $d011
+     7 = D200						AUDF1 = $d200
+     8 = D201						AUDC1 = $d201
+     9 = D203						AUDC2 = $d203
+    10 = D205						AUDC3 = $d205
+    11 = D207						AUDC4 = $d207
+    12
+    13 = D208						AUDCTL = $d208
+    14 = D20F						SKCTL = $d20f
+    15
+    16 = 4F00						ADSRTable = ADSRMax+4
+    17
+    18 02E2						org $CB
+    19
+    20 00CB-00D1> 00 99		NOTEPTR		.word $9900			; change this to end of notes
+    21 00CD 00 50		PLAYPTR		.word $5000			; change this to beginning of notes
+    22 00CF 00 00		PLAYTIMER	.word 0
+    23 00D1 00			TIMER		.byte 0
+    24
+    25 00D2						org $4000
+    26
+    27 4000-41C6> 68					pla					; BASIC routine to pull beginning and length of notes
+    28 4001 C9 02					cmp #2				; usage: X=USR(16384,PLAYPTR,NOTEPTR) (see above)
+    29 4003 F0 08					beq pulldata
+    30 4005 A8						tay					; not exactly 2 arguments, so exit, but do leave with a proper stack...
+    31 4006 88						dey
+    32 4007 68			clearstack	pla
+    33 4008 68						pla
+    34 4009 88						dey
+    35 400A 10 FB					bpl clearstack
+    36 400C 60						rts
+    37
+    38 400D 68			pulldata	pla
+    39 400E 85 CE					sta PLAYPTR+1
+    40 4010 68						pla
+    41 4011 85 CD					sta PLAYPTR
+    42 4013 68						pla 
+    43 4014 85 CC					sta NOTEPTR+1
+    44 4016 68						pla 
+    45 4017 85 CB					sta NOTEPTR
+    46
+    47 4019			start
+    48 4019 A5 CD					lda PLAYPTR
+    49 401B 8D A0 41					sta TEMPPTR
+    50 401E A5 CE					lda PLAYPTR+1
+    51 4020 8D A1 41					sta TEMPPTR+1
+    52 							
+    53 4023 A0 13					ldy #<VBI				; set up VBI
+    54 4025 A2 41					ldx #>VBI
+    55 4027 A9 06					lda #6
+    56 4029 20 5C E4					jsr $e45c
+    57
+    58 402C A9 03					lda #3
+    59 402E 8D 0F D2					sta SKCTL
+    60 4031 A9 00					lda #0
+    61 4033 8D 08 D2					sta AUDCTL
+    62 4036 85 14					sta 20
+    63 							
+    64 4038 A0 03					ldy #3
+    65 403A 99 96 41		cleartimer	sta NOTETIMER,y
+    66 403D 88						dey
+    67 403E 10 FA					bpl cleartimer
+    68
+    69 4040			playloop	
+    70 4040 38						sec
+    71 4041 A5 14					lda 20
+    72 4043 E5 D1					sbc TIMER
+    73 4045 F0 F9					beq playloop
+    74 4047 A5 14					lda 20
+    75 4049 85 D1					sta TIMER
+    76 404B A9 00					lda #0
+    77 404D 85 4D					sta ATTRACT
+    78
+    79 404F EE 96 41					inc NOTETIMER			; increase timer
+    80 4052 D0 03					bne donetimer0
+    81 4054 EE 97 41					inc NOTETIMER+1
+    82 4057 EE 98 41		donetimer0	inc NOTETIMER+2
+    83 405A D0 03					bne donetimer1
+    84 405C EE 99 41					inc NOTETIMER+3
+    85 405F EE 9A 41		donetimer1	inc NOTETIMER+4
+    86 4062 D0 03					bne donetimer2
+    87 4064 EE 9B 41					inc NOTETIMER+5
+    88 4067 EE 9C 41		donetimer2	inc NOTETIMER+6
+    89 406A D0 03					bne exitcond
+    90 406C EE 9D 41					inc NOTETIMER+7
+    91 							
+    92 406F AD FC 02		exitcond	lda CH					; define an exit condition - here: SPACE key
+    93 4072 C9 21					cmp #$21
+    94 4074 F0 0A					beq jmpexitp
+    95 4076 A5 CE					lda PLAYPTR+1			; check end of music
+    96 4078 C5 CC					cmp NOTEPTR+1
+    97 407A 90 06					bcc doplay
+    98 407C A5 CD					lda PLAYPTR
+    99 407E C5 CB					cmp NOTEPTR
+   100 4080 B0 77		jmpexitp	bcs exitplay
+   101
+   102 4082 A0 00		doplay		ldy #0
+   103 4084 B1 CD					lda (PLAYPTR),y
+   104 4086 AA						tax						; voice to X
+   105 4087 C8						iny
+   106 4088 B1 CD					lda (PLAYPTR),y
+   107 408A 8D 9E 41					sta PLAYAUDC			; save AUDC-value
+   108 408D C8						iny
+   109 408E B1 CD					lda (PLAYPTR),y
+   110 4090 8D 9F 41					sta PLAYNOTE			; save note
+   111 4093 C8						iny
+   112 4094 B1 CD					lda (PLAYPTR),y
+   113 4096 85 CF					sta PLAYTIMER			; save timer low-byte
+   114 4098 C8						iny
+   115 4099 B1 CD					lda (PLAYPTR),y
+   116 409B 85 D0					sta PLAYTIMER+1			; save timer high-byte
+   117
+   118 409D BD A2 41					lda POKEYOffset,x
+   119 40A0 A8						tay						; Offset to Y
+   120 40A1 B9 97 41		waittimer	lda NOTETIMER+1,y
+   121 40A4 C5 D0					cmp PLAYTIMER+1			; Playtimer >= Notetimer (high byte)?
+   122 40A6 90 98					bcc playloop
+   123 40A8 B9 96 41					lda NOTETIMER,y
+   124 40AB C5 CF					cmp PLAYTIMER			; Playtimer >= Notetimer (low byte)?
+   125 40AD 90 91					bcc playloop
+   126 40AF A9 00					lda #0					; First reset counters...
+   127 40B1 85 CF					sta PLAYTIMER
+   128 40B3 85 D0					sta PLAYTIMER+1
+   129 40B5 99 96 41					sta NOTETIMER,y
+   130 40B8 99 97 41					sta NOTETIMER+1,y
+   131 40BB AD 9E 41					lda PLAYAUDC			; then play note...
+   132 40BE 29 F0					and #%11110000
+   133 40C0 9D B2 41					sta AC1,x
+   134 40C3 9D C2 41					sta ADSRActive,x
+   135 40C6 AD 9E 41					lda PLAYAUDC
+   136 40C9 29 0F					and #%00001111
+   137
+   138 40CB 48						pha
+   139 40CC C9 00					cmp #0				; Voice off, begin release phase?
+   140 40CE D0 08					bne contADS
+   141 40D0 BD A6 41					lda RelOffset,x		; set beginning of release phase values
+   142 40D3 9D AE 41					sta ADSRC,x			; to counter
+   143 40D6 D0 05					bne contplay
+   144 40D8 A9 00		contADS		lda #0
+   145 40DA 9D AE 41					sta ADSRC,x
+   146 40DD 68			contplay	pla
+   147
+   148 40DE 9D B6 41					sta VOLSAVE,x
+   149 				;			sta AUDC1,y
+   150 40E1 AD 9F 41					lda PLAYNOTE
+   151 40E4 99 00 D2					sta AUDF1,y
+   152
+   153 40E7 18						clc
+   154 40E8 A5 CD					lda PLAYPTR
+   155 40EA 69 05					adc #$05				; increase pointer
+   156 40EC 85 CD					sta PLAYPTR
+   157 40EE 90 06					bcc jmpexitc
+   158 40F0 A5 CE					lda PLAYPTR+1
+   159 40F2 69 00					adc #0
+   160 40F4 85 CE					sta PLAYPTR+1
+   161 40F6 4C 6F 40		jmpexitc	jmp exitcond
+   162 							
+   163 40F9 A0 5F		exitplay	ldy #$5f			; disable VBI
+   164 40FB A2 E4					ldx #$e4
+   165 40FD A9 06					lda #6
+   166 40FF 20 5C E4					jsr $e45c
+   167
+   168 4102 A0 03					ldy #3
+   169 4104 A9 00					lda #0
+   170 4106 99 96 41		clearplayer	sta NOTETIMER,y
+   171 4109 99 01 D2					sta AUDC1,y
+   172 410C 99 05 D2					sta AUDC1+4,y
+   173 410F 88						dey
+   174 4110 10 F4					bpl clearplayer
+   175 4112 60						rts
+   176
+   177 4113 A2 00		VBI			ldx #0
+   178 4115 BD C2 41		nextadsr	lda ADSRActive,x	; are we in ADSR mode?
+   179 4118 F0 72					beq nextx			; if not then next voice
+   180 411A BD B6 41					lda VOLSAVE,x		; get channel's volume
+   181 411D 48						pha					; save volume
+   182 411E 8A						txa					; channel no. from X to A 
+   183 411F 0A						asl					; move six bits to left as pointer for ADSR table
+   184 4120 0A						asl
+   185 4121 0A						asl
+   186 4122 0A						asl
+   187 4123 0A						asl
+   188 4124 0A						asl
+   189 4125 7D AE 41					adc ADSRC,x			; add counter to create final pointer
+   190 4128 A8						tay					; store pointer in Y
+   191 4129 8D C6 41					sta ADSRTemp		; and in temp variable
+   192 412C 68						pla					; get back volume
+   193
+   194 412D C9 00					cmp #0				; are we in release phase
+   195 412F D0 0F					bne adsphase
+   196 4131 18			relphase	clc					; yes, then add value to current sound level (zero)
+   197 4132 79 00 4F					adc ADSRTable,y
+   198 4135 DD BA 41					cmp VOLTemp,x
+   199 4138 90 14					bcc setadsr
+   200 413A BD BA 41					lda VOLTemp,x
+   201 413D 4C 4E 41					jmp setadsr
+   202
+   203 4140 38			adsphase	sec					; otherwise, in ADS mode:
+   204 4141 F9 00 4F					sbc ADSRTable,y		; subtract envelope
+   205 4144 9D BA 41					sta VOLTemp,x		; remember last volume level for possible release phase
+   206 4147 B0 05					bcs setadsr			; less than zero?
+   207 4149 A9 00					lda #0				; then zero it is.
+   208 414B 9D BA 41					sta VOLTemp,x
+   209 414E 9D BE 41		setadsr		sta DispVol,x
+   210 4151 18						clc
+   211 4152 7D B2 41					adc AC1,x			; add distortion
+   212 4155 48						pha					; save resulting AUDC value
+   213 4156 BD A2 41					lda POKEYOffset,x	; find out where to store it
+   214 4159 A8						tay
+   215 415A 68						pla
+   216 415B 99 01 D2					sta AUDC1,y			; and play
+   217
+   218 415E BD AE 41					lda ADSRC,x			; increase envelope counter
+   219 4161 18						clc
+   220 4162 69 01					adc #1
+   221 4164 DD AA 41					cmp RelMax,x		; if in release mode
+   222 4167 F0 1B					beq resetADSR		; check for end of release
+   223 4169 DD FC 4E					cmp ADSRMax,x		; otherwise, is ADS stage maxed out?
+   224 416C D0 10					bne incADSRC		; if not then increase
+   225
+   226 416E AD C6 41					lda ADSRTemp		; get back current counter
+   227 4171 A8						tay
+   228 4172 C8						iny					; increase
+   229 4173 B9 00 4F					lda ADSRTable,y
+   230 4176 F0 14					beq nextx			; if zero then remain at last position
+   231 4178 BD AE 41					lda ADSRC,x			; otherwise
+   232 417B F9 00 4F					sbc ADSRTable,y		; subtract offset byte (pos. ADSRMax)
+   233 417E 9D AE 41		incADSRC	sta ADSRC,x			; and set counter accordingly
+   234 4181 4C 8C 41					jmp nextx
+   235
+   236 4184 A9 00		resetADSR	lda #0
+   237 4186 9D AE 41					sta ADSRC,x
+   238 4189 9D C2 41					sta ADSRActive,x
+   239
+   240 418C E8			nextx		inx
+   241 418D E0 04					cpx #4
+   242 418F D0 84					bne nextadsr
+   243 4191 4C 5F E4					jmp $e45f
+   244
+   245 4194 00 00		NOTE		.byte 0, 0
+   246 4196 00 00 00 00 00 00 + NOTETIMER	.word 0, 0, 0, 0
+   247 419E 00			PLAYAUDC	.byte 0
+   248 419F 00			PLAYNOTE	.byte 0
+   249 41A0 00 00		TEMPPTR		.word 0
+   250
+   251 41A2 00 02 04 06		POKEYOffset	.byte 0, 2, 4, 6
+   252 41A6 30 70 B0 F0		RelOffset	.byte $30, $70, $b0, $f0
+   253 41AA 40 80 C0 00		RelMax		.byte $40, $80, $c0, $00
+   254 41AE 00 00 00 00		ADSRC		.byte 0, 0, 0, 0
+   255 41B2 A0 A0 A0 A0		AC1			.byte $a0, $a0, $a0, $a0
+   256 41B6 00 00 00 00		VOLSAVE		.byte 0, 0, 0, 0
+   257 41BA 00 00 00 00		VolTemp		.byte 0, 0, 0, 0
+   258 41BE 00 00 00 00		DispVol		.byte 0, 0 ,0 ,0
+   259 41C2 00 00 00 00		ADSRActive	.byte 0, 0, 0 ,0
+   260 41C6 00			ADSRTemp	.byte 0
+   261
+   262 41C7						org $4efc
+   263 4EFC			ADSRMax
+   264 				/*
+   265 				ADSRMax		.byte 32, 34, 26, 4
+   266 							.byte 15,15,14,14,13,13,12,12,11,11,10,10,9,9,8,8,7,7,6,6,5,5,4,4,3,3,2,2,1,1,0,0,6
+   267 							org $4f30
+   268 							.byte 6,6,5,5,4,4,3,3,2,2,1,1,0,0
+   269 							org $4f40
+   270 							.byte 0,0,1,1,2,2,3,3,4,4,5,5,6,6,7,7,8,8,7,7,6,6,5,5,4,4,3,3,2,2,1,1,0,0,0
+   271 							org $4f80
+   272 							.byte 0,0,1,1,2,2,3,3,4,4,5,5,6,6,7,7,8,8,9,9,10,10,11,11,12,12,0
+   273 							org $4fc0
+   274 							.byte 0,0,15,15,3
+   275 				*/
+   275
