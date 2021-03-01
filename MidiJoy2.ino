@@ -38,22 +38,22 @@ https://www.pjrc.com/teensy/td_libs_MIDI.html
 // define which MIDI channel should be mapped to which soundchip (multiple soundchips only work with PokeyMax extension on ATARI computers)
 // POKEYs shoudl come first and have to come first when envelopes are to be used.
 int MIDImap[] = {
-  SID(0),
-  SID(1),
-  SID(2),
-  SID(3),
-  SID(4),
-  SID(5),
-  PSG(6),
-  PSG(7),
-  PSG(8),
-  PSG(9),
-  PSG(10),
-  PSG(11),
-  POKEY(12),
-  POKEY(13),
-  POKEY(14),
-  POKEY(15)
+  POKEY(0),
+  POKEY(1),
+  POKEY(2),
+  POKEY(3),
+  POKEY(4),
+  POKEY(5),
+  SID(6),
+  SID(7),
+  SID(8),
+  SID(9),
+  SID(10),
+  SID(11),
+  PSG(12),
+  PSG(13),
+  PSG(14),
+  PSG(15)
 };
 
 byte data; // general working byte for serially-received data
